@@ -79,7 +79,7 @@
 // yet.") instead of erroring. Nothing here touches Install ITP,
 // Manufacture ITP, Site Measure, Viewer, UTZLINE Projects or Scheduler.)
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-delivery-itp-cache-v3";
+var CACHE_NAME = "utzline-delivery-itp-cache-v4";
 
 var PRECACHE_URLS = [
   "./",
