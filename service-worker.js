@@ -93,8 +93,25 @@
 // name line above the existing "Pin dropped..." description. A photo or
 // snapshot saved before this release has no addedBy/capturedBy on file and
 // simply shows its date/time alone, never a blank or "undefined" name.)
+//
+// (v7, 2026-09-23: Andrew, verbatim: "Manufacture status needs to be split
+// up into 2 parts. We need a machined and a manufactured tab. All
+// traceable by user name. Machined to have its own app. Called machine
+// schedule. This is where the machinist can mark off a joinery item as
+// complete. It will add their name and date time to the system." This app
+// now recognises the new "machined" stage (rank 3, between
+// "in_manufacture" and "manufactured") on the shared joinery-status.json
+// record, set by the new sibling app UTZLINE Machine Schedule when the
+// machinist marks a joinery item complete (their own name + date/time,
+// via the same shared identity system this app already uses). Delivery
+// ITP itself only ever reads "machined"/"manufactured" and still only
+// ever writes "delivered" here (unchanged) -- joineryStatusRank/
+// joineryStatusIcon/joineryDisplayIcon in index.html were renumbered so
+// manufactured/delivered/installed each shift up one rank (4/5/6, was
+// 3/4/5) to make room for "machined" at rank 3. No data migration: this
+// is additive to the existing forward-only status chain.)
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-delivery-itp-cache-v6";
+var CACHE_NAME = "utzline-delivery-itp-cache-v7";
 
 var PRECACHE_URLS = [
   "./",

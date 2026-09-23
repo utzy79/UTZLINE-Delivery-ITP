@@ -1,11 +1,13 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v6** (its own independent version line, separate from
+**Current version: v7** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
 line every time a new build ships. This line has drifted behind the actual
 shipped cache version twice before today — see the v4 and "v2" entries
 below for what each catch-up covers; `next-version-notes.md` in the project
 is the authoritative record for anything not detailed here.)
+
+**v7 (2026-09-23):** Andrew, verbatim: "Manufacture status needs to be split up into 2 parts. We need a machined and a manufactured tab. All traceable by user name. Machined to have its own app. Called machine schedule. This is where the machinist can mark off a joinery item as complete. It will add their name and date time to the system." This app now recognises a new **"machined"** stage (rank 3, between `in_manufacture` and `manufactured`) on the shared `joinery-status.json` record, set by the brand-new sibling app **UTZLINE Machine Schedule** when the machinist marks a joinery item complete (their own name + date/time, via the same shared identity system this app already uses). Delivery ITP itself is a read-only consumer of `machined`/`manufactured` and still only ever writes `delivered` here (unchanged) — `joineryStatusRank`/`joineryStatusIcon`/`joineryDisplayIcon` were renumbered so manufactured/delivered/installed each shift up one rank (4/5/6, was 3/4/5) to make room. No data migration, no other app-visible change. `service-worker.js` cache bumped to `utzline-delivery-itp-cache-v7`.
 
 **v6 (2026-09-23):** Andrew, verbatim, on the exported PDF's photos/pin drops/snapshots: "change it from a3 to a4 portrait. All collated nicely per page. All to be date and time stamped with users name also." The trailing photo pages (previously one or more A3 landscape pages, 3 columns × 2 rows) are now **A4 portrait**, 2 columns × 3 rows — same 6-per-page count, reflowed for the narrower shape, matching this document's own page size for the first time. Each photo now shows a **date/time + uploader-name caption** underneath it, from a new `addedBy` field stamped onto the photo record the moment it's added, alongside its existing `addedAt`. The **DELIVERY LOCATION** pin-drop snapshot added in v5 (below) gets the same treatment: `locationSnapshot` now also carries `capturedBy`, and its PDF caption gains a date/time + name line above the existing "Pin dropped on the level plan at delivery..." description. A photo or snapshot saved before this release has no addedBy/capturedBy and simply shows its date/time alone, never a blank or "undefined" name. `service-worker.js` cache bumped to `utzline-delivery-itp-cache-v6`. Full 5-file suite re-run clean (the pre-existing `run_delivery_location_pdf_export.js` — which spies on `addImage`, not page format — is unaffected and still passes).
 
