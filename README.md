@@ -1,12 +1,43 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v2** (its own independent version line, separate from
+**Current version: v6** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
-line every time a new build ships.)
+line every time a new build ships. This line has drifted behind the actual
+shipped cache version twice before today — see the v4 and "v2" entries
+below for what each catch-up covers; `next-version-notes.md` in the project
+is the authoritative record for anything not detailed here.)
 
-**v2 (2026-09-23):** "Add location snapshot" replaced with an interactive
-**"Add location pin"** pin-drop workflow — tap the plan to place/move a
-draft pin, then Confirm to capture the snapshot centred on it and save both
+**v6 (2026-09-23):** Andrew, verbatim, on the exported PDF's photos/pin drops/snapshots: "change it from a3 to a4 portrait. All collated nicely per page. All to be date and time stamped with users name also." The trailing photo pages (previously one or more A3 landscape pages, 3 columns × 2 rows) are now **A4 portrait**, 2 columns × 3 rows — same 6-per-page count, reflowed for the narrower shape, matching this document's own page size for the first time. Each photo now shows a **date/time + uploader-name caption** underneath it, from a new `addedBy` field stamped onto the photo record the moment it's added, alongside its existing `addedAt`. The **DELIVERY LOCATION** pin-drop snapshot added in v5 (below) gets the same treatment: `locationSnapshot` now also carries `capturedBy`, and its PDF caption gains a date/time + name line above the existing "Pin dropped on the level plan at delivery..." description. A photo or snapshot saved before this release has no addedBy/capturedBy and simply shows its date/time alone, never a blank or "undefined" name. `service-worker.js` cache bumped to `utzline-delivery-itp-cache-v6`. Full 5-file suite re-run clean (the pre-existing `run_delivery_location_pdf_export.js` — which spies on `addImage`, not page format — is unaffected and still passes).
+
+**v5 (2026-09-23):** Andrew, verbatim: "delivery itps exports to show the
+snapshot location of the pindrops." The in-app checklist screen has shown
+the delivery-location-pin snapshot since the pin-drop feature shipped (see
+"v2" below), but the exported PDF never included it — `exportChecklistPdf()`
+now draws a new "DELIVERY LOCATION" section (the same square snapshot image,
+with a short caption) right after the notes section and before sign-off,
+**skipped entirely** (no empty placeholder box) for an item with no pin ever
+dropped. New regression test `run_delivery_location_pdf_export.js` spies on
+`jsPDF.API.addImage` (this app has no existing PDF-content-parsing
+convention to build on) to confirm the snapshot image is genuinely drawn for
+an item with a pin, and that nothing location-shaped is drawn for one
+without. Full suite re-run: 5/5 passing. Cache bumped to
+`utzline-delivery-itp-cache-v5`.
+
+**v4 (2026-09-23, drift catch-up):** the family-wide shared name+PIN
+numberpad identity rework — see `next-version-notes.md`'s "shared name+PIN
+identity rolled out family-wide" entry — was built and tested IN this app
+first, as the reference implementation the rest of the family's own rollout
+copies verbatim, bumping `service-worker.js`'s cache to
+`utzline-delivery-itp-cache-v4`. That work was never given its own entry or
+version bump in this README at the time (the focus then was documenting the
+rollout to the other six apps) — caught up here now, no code changed by this
+catch-up itself.
+
+**"v2" (2026-09-23; actually shipped as cache v3 — the README's own version
+line was already one release behind by this point, never bumped past v2):**
+"Add location snapshot" replaced with an interactive **"Add location pin"**
+pin-drop workflow — tap the plan to place/move a draft pin, then Confirm to
+capture the snapshot centred on it and save both
 `data.deliveryLocationPin = {x,y}` and `data.locationSnapshot` together
 (Cancel discards the draft, nothing saved). The thumbnail/"View on map"
 now centers on that pin; the existing "View on plan" (the item's own

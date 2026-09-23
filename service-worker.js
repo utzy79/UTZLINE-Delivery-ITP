@@ -78,8 +78,23 @@
 // degrade gracefully to a toast ("No plan location found for this item
 // yet.") instead of erroring. Nothing here touches Install ITP,
 // Manufacture ITP, Site Measure, Viewer, UTZLINE Projects or Scheduler.)
+//
+// (v6, 2026-09-23: Andrew, verbatim, on the exported PDF's photos/pin
+// drops/snapshots: "change it from a3 to a4 portrait. All collated nicely
+// per page. All to be date and time stamped with users name also." The
+// trailing photo-grid page(s) (previously A3 landscape, 3x2) are now A4
+// portrait, 2x3, matching the rest of the document's own page size for the
+// first time -- each photo shows a date/time + uploader-name caption
+// underneath it (formatPdfImageStamp), from a new `addedBy` field stamped
+// onto a photo the moment it's added (deviceUserName at add-time)
+// alongside its existing `addedAt`. The DELIVERY LOCATION pin-drop
+// snapshot (v2/v5, above) gets the same treatment: `locationSnapshot` now
+// also carries `capturedBy`, and its own PDF caption gains a date/time +
+// name line above the existing "Pin dropped..." description. A photo or
+// snapshot saved before this release has no addedBy/capturedBy on file and
+// simply shows its date/time alone, never a blank or "undefined" name.)
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-delivery-itp-cache-v4";
+var CACHE_NAME = "utzline-delivery-itp-cache-v6";
 
 var PRECACHE_URLS = [
   "./",
