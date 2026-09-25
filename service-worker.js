@@ -111,7 +111,7 @@
 // 3/4/5) to make room for "machined" at rank 3. No data migration: this
 // is additive to the existing forward-only status chain.)
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-delivery-itp-cache-v9";
+var CACHE_NAME = "utzline-delivery-itp-cache-v10";
 
 var PRECACHE_URLS = [
   "./",
