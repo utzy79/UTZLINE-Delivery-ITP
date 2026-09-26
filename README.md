@@ -1,11 +1,19 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v14** (its own independent version line, separate from
+**Current version: v15** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
 line every time a new build ships. This line has drifted behind the actual
 shipped cache version twice before today — see the v4 and "v2" entries
 below for what each catch-up covers; `next-version-notes.md` in the project
 is the authoritative record for anything not detailed here.)
+
+**v15 (2026-09-26):** Status icon change — Andrew, verbatim: "change in
+manufacture to this 🔨 and machined to this 🪚." `joineryStatusIcon` and
+the plan-marker `joineryDisplayIcon` both updated (`in_manufacture`: 🏭 →
+🔨; `machined`: ⚙️ → 🪚); no other status icon changed. Unlike Manufacture
+ITP, this app has no on-screen banner or other live UI text that spells
+either old icon out literally (checked) — icon-map-only change here.
+`service-worker.js` cache → `utzline-delivery-itp-cache-v15`.
 
 **v14 (2026-09-25):** the two things v13's own "Deliberately not ported" note flagged as coming later, both delivered now — Andrew: "port Install ITP's rework tracker into Delivery ITP" and, on Install ITP's own reverted pin-drop requirement, "we will add that the delivery itp later."
 

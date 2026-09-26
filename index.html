@@ -1447,8 +1447,8 @@ body.plan-fullscreen .plan-viewport{
       case "installed": return "🏆";
       case "delivered": return "🚚";
       case "manufactured": return "📦";
-      case "machined": return "⚙️";
-      case "in_manufacture": return "🏭";
+      case "machined": return "🪚";
+      case "in_manufacture": return "🔨";
       case "measured": return "📏";
       default: return "";
     }
@@ -1462,8 +1462,8 @@ body.plan-fullscreen .plan-viewport{
     if (rec.status === "installed") return "🏆";
     if (rec.status === "delivered") return "🚚";
     if (rec.status === "manufactured") return "📦";
-    if (rec.status === "machined") return "⚙️";
-    if (rec.status === "in_manufacture") return "🏭";
+    if (rec.status === "machined") return "🪚";
+    if (rec.status === "in_manufacture") return "🔨";
     if (rec.jobNote) return "🛠️";
     if (rec.status === "measured") return "📏";
     return "";
@@ -3805,7 +3805,7 @@ body.plan-fullscreen .plan-viewport{
     });
   }
 
-  /* ---- Status badges (📏/🏭/⚙️/📦/🚚/🏆 from the shared, event-sourced
+  /* ---- Status badges (📏/🔨/🪚/📦/🚚/🏆 from the shared, event-sourced
      joinery status) -- Install ITP round 5 (2026-09-25), ported. Andrew's
      screenshot there: "status badges resolved 11095 ms (cancelled, 50 of
      60 items have history)". The single listing of the Joinery Status
