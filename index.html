@@ -376,21 +376,18 @@ textarea.notes-box{
 .rework-state-chip{ font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; border-radius:6px; padding:2px 7px; border:1px solid var(--danger); color:var(--danger); }
 .rework-state-chip.state-machined, .rework-state-chip.state-manufactured{ border-color:#2563eb; color:#2563eb; }
 .rework-state-chip.state-delivered{ border-color:#b8791a; color:#b8791a; }
-.rework-state-chip.state-received{ border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft); }
 .rework-state-row{ display:flex; align-items:center; gap:8px; margin:6px 0 10px; font-size:13px; }
 .rework-state-row select{ font:inherit; font-size:13px; padding:6px 8px; }
 .rework-date{ font-size:12px; color:var(--text-secondary); }
 .rework-text{ margin:0 0 10px; white-space:pre-wrap; font-size:13px; }
 .rework-received-row{ display:flex; align-items:center; gap:8px; margin:10px 0; font-size:13px; flex-wrap:wrap; }
-.rework-received-row input[type="checkbox"]{ width:16px; height:16px; flex:none; }
 .rework-card.closed{ opacity:.85; border-color:var(--accent); }
 .rework-closed-tag{ display:inline-block; font-size:12px; font-weight:700; color:var(--accent-ink); background:var(--accent-soft); border:1px solid var(--accent); border-radius:6px; padding:3px 8px; margin-bottom:8px; }
-.rework-received-row input.rework-received-by{ flex:1 1 140px; min-width:120px; padding:6px 8px; border-radius:8px; border:1px solid var(--border-strong); background:var(--surface-2); color:var(--text-primary); font-size:13px; }
-.rework-received-row input[type="date"]{
-  margin-left:auto; font:inherit; font-size:13px; padding:6px 8px; border-radius:6px;
-  border:1px solid var(--border-strong); background:var(--surface-0); color:var(--text-primary);
-}
 .rework-empty{ color:var(--text-secondary); font-size:13px; }
+/* "Delivered to site" thumbnail (2026-09-26) -- the captured pin/snapshot,
+   same idea as the checklist's own locationSnapshotThumb but sized for an
+   inline row rather than the checklist's dedicated card. */
+.rework-delivery-thumb{ width:48px; height:48px; object-fit:cover; border-radius:6px; flex:none; cursor:pointer; border:1px solid var(--border-strong); }
 
 /* ---- sign-off ---- */
 .signoff-block{
@@ -401,7 +398,7 @@ textarea.notes-box{
 .so-row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
 .so-field{ flex:1; min-width:140px; }
 .so-field label{ display:block; font-size:11px; color:var(--text-secondary); margin-bottom:3px; }
-.so-field input{
+.so-field input, .so-field select{
   width:100%; font:inherit; font-size:13px; padding:7px 9px; border-radius:6px;
   border:1px solid var(--border-strong); background:var(--surface-0); color:var(--text-primary);
 }
@@ -677,7 +674,7 @@ body.plan-fullscreen .plan-viewport{
   <div class="screen" id="screenReworks">
     <button type="button" class="back-link" id="backFromReworksBtn">← All levels</button>
     <h2 class="rework-heading">🛠 Outstanding reworks</h2>
-    <p class="hint">Every rework logged on this project that hasn't been received back and closed out. Newest first.</p>
+    <p class="hint">Every rework logged on this project that hasn't been delivered to site and closed out. Newest first.</p>
     <div id="reworksPageList"></div>
   </div>
 
@@ -772,19 +769,24 @@ body.plan-fullscreen .plan-viewport{
     <textarea class="notes-box" id="notesEl" placeholder="Anything not covered above — missing parts, follow-up needed, etc."></textarea>
 
     <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin-top:18px;">Sign-off / Approval</h2>
-    <div class="signoff-block" data-role="driver">
+    <!-- PIN-gated sign-off (2026-09-26) -- Andrew: "pin entry required for
+         sign offs. stopping anyone from randomly signing off under another
+         users name. (delivery drivers, site managers, factory managers)."
+         Confirmed design: the driver's own free-text name field is replaced
+         by the shared name+PIN registry's own picker (a <select>, same
+         registry as the identity selector) -- picking a name immediately
+         opens the numberpad to verify THAT name's PIN before it's accepted;
+         a wrong PIN or Cancel reverts the selection. Also confirmed: "also
+         with the delivery itp, remove the site supervisor sign off, this is
+         no longer required" -- that second block is gone from this
+         checklist entirely (data.signoff.supervisor is no longer written
+         for new checklists, but old files that already have it keep it on
+         disk untouched -- see isChecklistSignedOff/exportChecklistPdf's own
+         comments for how existing signed history is preserved). -->
+    <div class="signoff-block" data-role="driver" data-pin-gated="true">
       <div class="so-role">Delivery Driver / Transport Rep.</div>
       <div class="so-row">
-        <div class="so-field"><label>Name</label><input type="text" class="so-name" autocomplete="off"></div>
-        <div class="so-field"><label>Date</label><input type="date" class="so-date"></div>
-      </div>
-      <div class="sig-pad-wrap"><canvas class="sig-canvas"></canvas><div class="sig-pad-empty-hint">Sign here</div></div>
-      <div class="sig-actions"><button class="mbtn sig-clear-btn">Clear signature</button></div>
-    </div>
-    <div class="signoff-block" data-role="supervisor">
-      <div class="so-role">Metro Site Supervisor (Receiving)</div>
-      <div class="so-row">
-        <div class="so-field"><label>Name</label><input type="text" class="so-name" autocomplete="off"></div>
+        <div class="so-field"><label>Name</label><select class="so-name-select" aria-label="Driver name"></select></div>
         <div class="so-field"><label>Date</label><input type="date" class="so-date"></div>
       </div>
       <div class="sig-pad-wrap"><canvas class="sig-canvas"></canvas><div class="sig-pad-empty-hint">Sign here</div></div>
@@ -1447,8 +1449,8 @@ body.plan-fullscreen .plan-viewport{
       case "installed": return "🏆";
       case "delivered": return "🚚";
       case "manufactured": return "📦";
-      case "machined": return "🪚";
-      case "in_manufacture": return "🔨";
+      case "machined": return "⚙️";
+      case "in_manufacture": return "🏭";
       case "measured": return "📏";
       default: return "";
     }
@@ -1462,8 +1464,8 @@ body.plan-fullscreen .plan-viewport{
     if (rec.status === "installed") return "🏆";
     if (rec.status === "delivered") return "🚚";
     if (rec.status === "manufactured") return "📦";
-    if (rec.status === "machined") return "🪚";
-    if (rec.status === "in_manufacture") return "🔨";
+    if (rec.status === "machined") return "⚙️";
+    if (rec.status === "in_manufacture") return "🏭";
     if (rec.jobNote) return "🛠️";
     if (rec.status === "measured") return "📏";
     return "";
@@ -2261,7 +2263,28 @@ body.plan-fullscreen .plan-viewport{
     var text = csvStringifyRows(lines);
     return state.rootHandle.getFileHandle(USERS_CSV_NAME, { create: true }).then(function(fh){
       return fh.createWritable();
-    }).then(function(w){ return w.write(text).then(function(){ return w.close(); }); });
+    }).then(function(w){ return w.write(text).then(function(){ return w.close(); }); }).then(function(){
+      cachedUsersRows = null; // (2026-09-26) invalidate -- see getUsersRowsCached
+    });
+  }
+  // (2026-09-26, PIN-gated sign-offs) A plain checklist open/close is a HOT
+  // path this app has spent several rounds keeping cheap (see the
+  // item-status index cache below) -- populating the sign-off name
+  // <select> on every single render must NOT cost a fresh utzline-users.csv
+  // read every time, the same way the item-status index avoids re-reading
+  // every checklist. Cached in memory, refreshed once at boot/root-pick
+  // (populateIdentitySelector already reads it there -- piggy-backs on that
+  // read rather than a separate one) and invalidated by writeUsersCsv
+  // whenever a name/PIN is actually added. The PIN itself is still verified
+  // against a FRESH read (see the sign-off block's own openNumberpad
+  // verify()) -- only the dropdown's OPTION LIST uses this cache, so a PIN
+  // changed moments ago on another device is still checked correctly, it
+  // just might not show a brand-new name in the list until the next cache
+  // refresh.
+  var cachedUsersRows = null;
+  function getUsersRowsCached(){
+    if (cachedUsersRows) return Promise.resolve(cachedUsersRows);
+    return readUsersCsv().then(function(rows){ cachedUsersRows = rows; return rows; });
   }
   function findUserRowCI(rows, name){
     var n = String(name || "").trim().toLowerCase();
@@ -2429,6 +2452,7 @@ body.plan-fullscreen .plan-viewport{
   function populateIdentitySelector(){
     if (!identitySelector) return Promise.resolve();
     return readUsersCsv().then(function(rows){
+      cachedUsersRows = rows; // (2026-09-26) piggy-back this boot-time read into the sign-off picker's own cache
       var names = rows.map(function(r){ return r.name; }).filter(Boolean);
       names.sort(function(a, b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
       identitySelector.innerHTML = "";
@@ -3083,6 +3107,10 @@ body.plan-fullscreen .plan-viewport{
   function enterPinPlacementMode(ctx){
     planPinMode = {
       levelName: ctx.levelName, roomName: ctx.roomName, joineryId: ctx.joineryId,
+      // Set only when this pin belongs to a REWORK entry rather than the
+      // item's own main deliveryLocationPin (2026-09-26) -- see
+      // goToAddReworkDeliveryPin/confirmPinPlacement's own rework branch.
+      reworkEntryId: ctx.reworkEntryId || null,
       draftPin: ctx.existingPin ? { x: ctx.existingPin.x, y: ctx.existingPin.y } : null
     };
     planPinBarEl.style.display = "";
@@ -3131,10 +3159,51 @@ body.plan-fullscreen .plan-viewport{
       showToast(NO_LEVEL_PLAN_MSG);
     });
   }
+  // "Drop pin + mark delivered" (Rework screen, 2026-09-26) -- same idea as
+  // goToAddLocationPin just above, targeting one rework entry's own pin
+  // instead of the item's main deliveryLocationPin. No leave-guard wrapper
+  // (unlike the checklist screen, the Rework screen has no unsaved-edit
+  // tracking of its own -- every change there already writes immediately).
+  function goToAddReworkDeliveryPin(entry){
+    if (!reworkState.data) return;
+    var levelName = state.levelName, roomName = state.roomName, joineryId = reworkState.joineryCode;
+    var existingPin = entry.deliveryLocationPin || null;
+    return loadPlanForLevelName(levelName).then(function(plan){
+      if (!plan){ showToast(NO_LEVEL_PLAN_MSG); return; }
+      var marker = findMarkerForItem(plan, roomName, joineryId);
+      var centerOn = existingPin || (marker ? { x: marker.x, y: marker.y } : null);
+      if (centerOn) pendingPlanCenterTarget = centerOn;
+      return openLevelOnPlan(levelName).then(function(){
+        enterPinPlacementMode({ levelName: levelName, roomName: roomName, joineryId: joineryId, existingPin: existingPin, reworkEntryId: entry.id });
+      });
+    }).catch(function(err){
+      console.error("Add rework delivery pin failed:", err);
+      showToast(NO_LEVEL_PLAN_MSG);
+    });
+  }
   function cancelPinPlacement(){
     var ctx = planPinMode;
     exitPinPlacementMode();
-    if (ctx) openItemFromMarker(ctx.roomName, ctx.joineryId);
+    if (!ctx) return;
+    if (ctx.reworkEntryId) openReworkFromMarker(ctx.roomName, ctx.joineryId);
+    else openItemFromMarker(ctx.roomName, ctx.joineryId);
+  }
+  // Same "look it up fresh by identity, not by whatever screen state
+  // happens to be current" pattern as getChecklistFileHandleFor above --
+  // needed because confirmPinPlacement's rework branch runs after the
+  // Rework screen (and reworkState) has already been left for the Level
+  // Plan screen. Shares the same folder Install ITP itself reads/writes
+  // (see the rework-tracker block comment).
+  function getReworkFileHandleFor(levelName, roomName, joineryCode, create){
+    var fileName = itpChecklistFileNameFor(levelName, roomName, joineryCode, state.projectIsFlat);
+    if (state.projectIsFlat){
+      return getReworkDirFlat(state.projectHandle, !!create).then(function(dirH){
+        return dirH.getFileHandle(fileName, { create: !!create });
+      });
+    }
+    return ensureReworkRoomFolderLegacy(levelName, roomName).then(function(roomH){
+      return roomH.getFileHandle(fileName, { create: !!create });
+    });
   }
   function confirmPinPlacement(){
     if (!planPinMode || !planPinMode.draftPin){
@@ -3145,6 +3214,37 @@ body.plan-fullscreen .plan-viewport{
     var plan = currentLevelPlan;
     planPinConfirmBtn.disabled = true;
     renderLocationSnapshot(plan, ctx.draftPin).then(function(snapResult){
+      if (ctx.reworkEntryId){
+        // Rework entry's own "Delivered to site" milestone (2026-09-26) --
+        // same pin+snapshot pair as a regular item's deliveryLocationPin/
+        // locationSnapshot, just written onto the matching entry inside
+        // the shared rework file instead of the checklist. Ticking this
+        // milestone IS dropping the pin -- there's no separate checkbox
+        // any more (see renderReworkList's own comment).
+        return getReworkFileHandleFor(ctx.levelName, ctx.roomName, ctx.joineryId, true).then(function(fh){
+          return fh.getFile().then(function(f){ return f.text(); }).then(function(text){
+            var data = null;
+            try{ data = JSON.parse(text); }catch(e){ data = null; }
+            if (!data || !Array.isArray(data.reworks)) data = blankReworkFile(ctx.joineryId);
+            if (!data.level) data.level = ctx.levelName;
+            if (!data.room) data.room = ctx.roomName;
+            var entry = null;
+            for (var i = 0; i < data.reworks.length; i++){
+              if (data.reworks[i] && data.reworks[i].id === ctx.reworkEntryId){ entry = data.reworks[i]; break; }
+            }
+            if (!entry) return; // entry deleted from under us while the plan was open -- nothing to write
+            entry.deliveryLocationPin = { x: ctx.draftPin.x, y: ctx.draftPin.y };
+            entry.locationSnapshot = { dataUrl: snapResult.dataUrl, w: snapResult.w, h: snapResult.h, capturedAt: new Date().toISOString(), capturedBy: deviceUserName || "" };
+            entry.received = true;
+            entry.receivedDate = new Date().toISOString().slice(0, 10);
+            entry.receivedBy = deviceUserName || "";
+            setReworkState(entry, "delivered");
+            data.updatedAt = new Date().toISOString();
+            var payload = JSON.stringify(data);
+            return fh.createWritable().then(function(w){ return w.write(payload).then(function(){ return w.close(); }); });
+          });
+        });
+      }
       return getChecklistFileHandleFor(ctx.levelName, ctx.roomName, ctx.joineryId, true).then(function(fh){
         return fh.getFile().then(function(f){ return f.text(); }).then(function(text){
           var data = null;
@@ -3163,6 +3263,20 @@ body.plan-fullscreen .plan-viewport{
       });
     }).then(function(){
       exitPinPlacementMode();
+      if (ctx.reworkEntryId){
+        return openReworkFromMarker(ctx.roomName, ctx.joineryId).then(function(){
+          // The write just above went straight to the file (reworkState
+          // wasn't the live target while the plan screen was open), so it
+          // bypassed writeReworkFile's own syncReworkPdf call. openRework
+          // (inside openReworkFromMarker) just reloaded reworkState.data
+          // fresh off the very file we wrote, so this re-save is a safe,
+          // idempotent no-op on the JSON that only exists to bring the
+          // cumulative rework PDF back up to date.
+          return writeReworkFile();
+        }).then(function(){
+          showToast("Delivered to site — pin and photo saved.");
+        });
+      }
       return openItemFromMarker(ctx.roomName, ctx.joineryId).then(function(){
         showToast("Delivery location pin saved.");
       });
@@ -3219,43 +3333,44 @@ body.plan-fullscreen .plan-viewport{
      both are added (its PDF then re-exports as a fresh timestamped file;
      the shared status stays at delivered -- it is forward-only). The four
      helpers below are what the guided Save & exit flow (saveChecklistBtn)
-     branches on -- "everything else done but X missing". */
+     branches on -- "everything else done but X missing".
+
+     UPDATE (2026-09-26, PIN-gated sign-offs): "also with the delivery itp,
+     remove the site supervisor sign off, this is no longer required" -- all
+     four helpers below now gate on the DRIVER's signature alone (the only
+     sign-off block this app still has). A supervisor signature is no longer
+     part of the rule at all, even for old files that happen to still carry
+     one on disk from before this change -- see blankChecklist's own note. */
   function checklistHasPhoto(data){ return !!(data && Array.isArray(data.photos) && data.photos.length); }
   function checklistHasPin(data){ return !!(data && data.deliveryLocationPin); }
+  function checklistDriverSigned(data){ return !!(data && data.signoff && data.signoff.driver && data.signoff.driver.sig); }
   function isChecklistSignedOff(data){
-    return !!(data && data.signoff &&
-      data.signoff.driver && data.signoff.driver.sig &&
-      data.signoff.supervisor && data.signoff.supervisor.sig) && !checklistHasNoAnswer(data)
+    return checklistDriverSigned(data) && !checklistHasNoAnswer(data)
       && checklistHasPhoto(data) && checklistHasPin(data);
   }
   // "Everything except the photo" (pin present) -- what Save & exit checks
   // to decide whether to ask for a photo only.
   function checklistOnlyMissingPhoto(data){
-    return !!(data && data.signoff &&
-      data.signoff.driver && data.signoff.driver.sig &&
-      data.signoff.supervisor && data.signoff.supervisor.sig) && !checklistHasNoAnswer(data)
+    return checklistDriverSigned(data) && !checklistHasNoAnswer(data)
       && !checklistHasPhoto(data) && checklistHasPin(data);
   }
   // "Everything except the pin" (photo present) -- what Save & exit checks
   // to decide whether to ask for a delivery-location pin only.
   function checklistOnlyMissingPin(data){
-    return !!(data && data.signoff &&
-      data.signoff.driver && data.signoff.driver.sig &&
-      data.signoff.supervisor && data.signoff.supervisor.sig) && !checklistHasNoAnswer(data)
+    return checklistDriverSigned(data) && !checklistHasNoAnswer(data)
       && checklistHasPhoto(data) && !checklistHasPin(data);
   }
   // "Everything except BOTH the photo and the pin" -- what Save & exit
   // checks to decide whether to ask for both at once.
   function checklistMissingPinAndPhoto(data){
-    return !!(data && data.signoff &&
-      data.signoff.driver && data.signoff.driver.sig &&
-      data.signoff.supervisor && data.signoff.supervisor.sig) && !checklistHasNoAnswer(data)
+    return checklistDriverSigned(data) && !checklistHasNoAnswer(data)
       && !checklistHasPhoto(data) && !checklistHasPin(data);
   }
   // Status for a single joinery item's own marker -- complete only once
-  // THAT item's own checklist file has both sign-off signatures AND no row
-  // is flagged "No"; not started yet (no file), partially filled, or
-  // flagged both read as incomplete. Since 2026-09-25 the Level Plan no
+  // THAT item's own checklist file has its sign-off signature (driver
+  // only, since 2026-09-26 -- see isChecklistSignedOff) AND no row is
+  // flagged "No"; not started yet (no file), partially filled, or flagged
+  // both read as incomplete. Since 2026-09-25 the Level Plan no
   // longer calls this per marker (see loadLevelPlanItpStatuses -- the
   // index answers it without a full read); kept, as Install ITP kept it,
   // as the one-item reference implementation of the rule.
@@ -3286,7 +3401,7 @@ body.plan-fullscreen .plan-viewport{
   // Older behavior, kept for a legacy marker with no joinery code (see
   // computeItemItpStatus above): checks every joinery item already started
   // in a room and reports whether the room as a whole reads "complete" --
-  // every item present has BOTH sign-off signatures. A room with no items
+  // every item present is signed off. A room with no items
   // started yet, or with any item still missing a signature, reads
   // incomplete. Never creates the itp-delivery/<level>/<room> folder as a
   // side effect of just looking (unlike ensureItpRoomFolder, used when
@@ -3633,8 +3748,10 @@ body.plan-fullscreen .plan-viewport{
   // file that doesn't meet it is still shown (as incomplete, exactly as
   // computeItemItpStatus always did) but never written into the index.
   function isIndexableChecklist(data){
-    return !!(data && Array.isArray(data.rows) && data.signoff &&
-      data.signoff.driver && data.signoff.supervisor);
+    // (2026-09-26) No longer requires data.signoff.supervisor -- that block
+    // is retired for new checklists (see blankChecklist); the driver key
+    // alone is what every checklist, old or new, always has.
+    return !!(data && Array.isArray(data.rows) && data.signoff && data.signoff.driver);
   }
   // Directory iteration that gives up between entries once `gen` is stale
   // (a plain for-await can't be interrupted, and on Android a big folder
@@ -3805,7 +3922,7 @@ body.plan-fullscreen .plan-viewport{
     });
   }
 
-  /* ---- Status badges (📏/🔨/🪚/📦/🚚/🏆 from the shared, event-sourced
+  /* ---- Status badges (📏/🏭/⚙️/📦/🚚/🏆 from the shared, event-sourced
      joinery status) -- Install ITP round 5 (2026-09-25), ported. Andrew's
      screenshot there: "status badges resolved 11095 ms (cancelled, 50 of
      60 items have history)". The single listing of the Joinery Status
@@ -4312,19 +4429,32 @@ body.plan-fullscreen .plan-viewport{
     hideMarkerMenu();
     if (t) openViewJobNoteDialogFor(state.levelName, t.room, t.code);
   });
-  // Centre the plan view on a world point at a comfortable zoom. Andrew
-  // (2026-09-25): "when it goes to joinery / room location, it needs to
-  // zoom in closer" -- at least 5x the fit-to-screen scale (a marker reads
-  // at roughly 100-plus px across), never zooming OUT from a closer view
-  // the user already had. (centerPlanOnPoint above is the older fixed-
+  // Centre the plan view on a world point at a comfortable zoom. Andrew's
+  // own dictation trail, 2026-09-26 (general note, not scoped to this
+  // app): "goto location needsd to be zoomed in even closer than it is
+  // now" -> "the itp zoom works well, but needs to be closer again" ->
+  // "match the other zooms to that" -> SUPERSEDED -- "view on plan in
+  // projects is actually the perfect zoom level." Final reference is
+  // UTZLINE Projects, not this app's own old multiplier -- ported verbatim
+  // from Projects' openPlanCanvasForLevel marker-jump branch: at least
+  // native 1:1 pixel scale (Math.max(scale, 1)), never zooming OUT from a
+  // closer view the user already had. This replaces the old
+  // `fitScale * PLAN_FOCUS_ZOOM` multiplier, which zoomed to a different
+  // absolute level depending on a level's own image resolution instead of
+  // a fixed pixel-for-pixel feel matching Projects. This is the mechanism
+  // behind "Go to location"/"Go to pin" (row buttons and the marker menu)
+  // ONLY -- centerPlanOnPoint above is a DIFFERENT, deliberately fixed-
   // world-size centering this app's own "View on plan"/"View on map"/pin
-  // placement still use -- unchanged.)
+  // placement flows use (so the live view matches the saved location-
+  // snapshot thumbnail's own crop exactly), and is untouched by this
+  // change. PLAN_FOCUS_ZOOM is kept -- the multi-marker bounding-box fit
+  // below (a different feature, "Go to room") still uses it as a zoom cap,
+  // untouched by this change.
   var PLAN_FOCUS_ZOOM = 5;
   function centrePlanOn(wx, wy){
     var rect = planViewportEl.getBoundingClientRect();
     var vw = rect.width || 300, vh = rect.height || 300;
-    var fitScale = Math.min(vw / currentLevelPlan.imageW, vh / currentLevelPlan.imageH) * 0.94;
-    planView.scale = clampPlanScale(Math.max(planView.scale, fitScale * PLAN_FOCUS_ZOOM));
+    planView.scale = clampPlanScale(Math.max(planView.scale, 1));
     planView.tx = vw / 2 - wx * planView.scale;
     planView.ty = vh / 2 - wy * planView.scale;
     applyPlanView();
@@ -4349,10 +4479,16 @@ body.plan-fullscreen .plan-viewport{
   // (the item list's own chip, syncJoineryStatusFromChecklist's own
   // auto-advance gate) reads -- both signed AND no row flagged "No" AND a
   // photo AND a delivery pin (2026-09-25, v14 -- see isChecklistSignedOff).
+  // (2026-09-26, PIN-gated sign-offs) the supervisor block is retired, so
+  // this now just tracks the driver's own signature -- kept the name
+  // "bothSigned" (rather than renaming it and every downstream reader:
+  // the item-status index, both item-list renderers, the chip-text
+  // branches) since what it MEANS to the rest of this file is unchanged --
+  // "the sign-off step this app still has is done".
   function checklistProgress(data){
     var answered = 0, hasNo = checklistHasNoAnswer(data);
     data.rows.forEach(function(r){ if (r.status) answered++; });
-    var bothSigned = !!(data.signoff.driver.sig && data.signoff.supervisor.sig);
+    var bothSigned = checklistDriverSigned(data);
     var hasPhoto = checklistHasPhoto(data);
     var hasPin = checklistHasPin(data);
     var signed = bothSigned && !hasNo && hasPhoto && hasPin; // see isChecklistSignedOff
@@ -4759,9 +4895,15 @@ body.plan-fullscreen .plan-viewport{
       joineryNo: joineryNo,
       rows: CHECK_ITEMS.map(function(){ return { status: "", comment: "" }; }),
       notes: "",
+      // (2026-09-26) The supervisor sign-off is retired -- "remove the site
+      // supervisor sign off, this is no longer required" -- new checklists
+      // only ever get a "driver" key here. An OLD checklist already on disk
+      // that has its own "supervisor" key (name/date/sig from before this
+      // change) keeps it untouched on every subsequent load+save -- this
+      // object is read from and merged into disk JSON, never reset -- see
+      // exportChecklistPdf for how that historical data still gets shown.
       signoff: {
-        driver: { name: "", date: "", sig: null },
-        supervisor: { name: "", date: "", sig: null }
+        driver: { name: "", date: "", sig: null, pinVerified: false }
       },
       // Photos (2026-09-23) -- {dataUrl, w, h, addedAt}[], each already
       // downscaled/compressed at capture time (see readAndCompressImageFile)
@@ -4833,16 +4975,26 @@ body.plan-fullscreen .plan-viewport{
      file per joinery item -- same identity key as that item's own checklist
      file (itpChecklistFileNameFor), just in a sibling folder -- holding an
      array of independently-trackable rework entries so multiple reworks per
-     item are supported. Kept completely separate from the checklist's own
-     JSON for the same "narrow, purpose-built file" reasoning as this app's
-     own deliveryLocationPin living on its OWN checklist rather than a
-     shared one.
-       FLAT project:   Project Saves/UTZLINE ITP/Delivery ITP Rework/<Level> - <Room> - <Code>.json
-       LEGACY project: itp-delivery-rework/<Level>/<Room>/<Code>.json
-     (renamed per THIS app's own naming convention -- "Delivery ITP Rework"
-     / "itp-delivery-rework", not Install ITP's "Install ITP Rework" /
-     "itp-install-rework", so the two apps' rework files never collide even
-     though the joinery-item identity key is the same shape.)
+     item are supported.
+       FLAT project:   Project Saves/UTZLINE ITP/Install ITP Rework/<Level> - <Room> - <Code>.json
+       LEGACY project: itp-install-rework/<Level>/<Room>/<Code>.json
+     UPDATE (2026-09-26, NEXT_RUN_NOTES.md item 9 remainder) -- this file is
+     now SHARED with Install ITP. Before this, each app kept its own
+     separate copy ("Delivery ITP Rework" / "itp-delivery-rework" here vs.
+     "Install ITP Rework" / "itp-install-rework" there), so a rework logged
+     in one app was invisible to the other and to UTZLINE Projects' own
+     Rework Register (which only ever read Install ITP's copy). Andrew's
+     confirmed design for the "Delivered to site" milestone -- captured
+     HERE, with a required photo+pin (see confirmPinPlacement's own rework
+     branch below), but shown read-only in Install ITP -- only works at all
+     if both apps are looking at the same file, so this app now reads/
+     writes Install ITP's own path directly. Any entries this app already
+     saved under its OLD "Delivery ITP Rework" path are picked up
+     automatically the first time an item's rework file is opened here
+     after this update (see migrateOldDeliveryReworkEntries, called from
+     openRework) -- merged into the shared file by entry id; the old file
+     is left in place untouched (a harmless leftover, not worth the risk of
+     deleting it).
      Every writeReworkFile() also regenerates ONE cumulative PDF for this
      item (exportReworkPdf, defined right after renderReworkList below)
      covering every entry still on file, newest-first, same as this screen's
@@ -4854,22 +5006,76 @@ body.plan-fullscreen .plan-viewport{
     return projectHandle.getDirectoryHandle("Project Saves", { create: !!create }).then(function(psH){
       return psH.getDirectoryHandle("UTZLINE ITP", { create: !!create });
     }).then(function(branchH){
-      return branchH.getDirectoryHandle("Delivery ITP Rework", { create: !!create });
+      return branchH.getDirectoryHandle("Install ITP Rework", { create: !!create });
     });
   }
   function getReworkPdfDirFlat(projectHandle, create){
     return projectHandle.getDirectoryHandle("PDF Files", { create: !!create }).then(function(pfH){
       return pfH.getDirectoryHandle("UTZLINE ITP", { create: !!create });
     }).then(function(branchH){
-      return branchH.getDirectoryHandle("Delivery ITP Rework", { create: !!create });
+      return branchH.getDirectoryHandle("Install ITP Rework", { create: !!create });
     });
   }
   function ensureReworkRoomFolderLegacy(levelName, roomName){
-    return projectDir(["itp-delivery-rework", levelName, roomName], true);
+    return projectDir(["itp-install-rework", levelName, roomName], true);
+  }
+  // ---- one-time migration off the OLD (pre-2026-09-26) Delivery-ITP-only
+  // rework location -- read-only, probed (create:false throughout) purely
+  // to pull any entries forward into the new shared file; never touches or
+  // removes the old file itself. Swallows any not-found/other read error
+  // as "nothing to migrate" -- this is a best-effort convenience, not a
+  // required step (a missing old file just means this item never had
+  // Delivery-ITP-only rework entries, the common case for anything logged
+  // via Install ITP first).
+  function getOldReworkFileHandle(levelName, roomName, joineryCode){
+    var fileName = itpChecklistFileNameFor(levelName, roomName, joineryCode, state.projectIsFlat);
+    if (state.projectIsFlat){
+      return state.projectHandle.getDirectoryHandle("Project Saves", { create: false }).then(function(psH){
+        return psH.getDirectoryHandle("UTZLINE ITP", { create: false });
+      }).then(function(branchH){
+        return branchH.getDirectoryHandle("Delivery ITP Rework", { create: false });
+      }).then(function(dirH){
+        return dirH.getFileHandle(fileName, { create: false });
+      });
+    }
+    return projectDir(["itp-delivery-rework", levelName, roomName], false).then(function(roomH){
+      return roomH.getFileHandle(fileName, { create: false });
+    });
+  }
+  // Merges any old-file entries not already present (by id) into the
+  // shared data's own reworks array, newest-first by createdAt. Resolves
+  // {data, migrated} either way -- data is the (possibly unchanged) shared
+  // data, migrated is true only when something was actually merged in, so
+  // the caller knows whether the merge needs to be persisted (see
+  // openRework, which writes the shared file back immediately when
+  // migrated is true -- otherwise this pickup would only ever live in this
+  // session's memory, and Install ITP / the Rework Register, which only
+  // ever read the shared file, would never see it).
+  function migrateOldDeliveryReworkEntries(levelName, roomName, joineryCode, sharedData){
+    return getOldReworkFileHandle(levelName, roomName, joineryCode)
+      .then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); }).then(function(text){
+        var oldData = null;
+        try{ oldData = JSON.parse(text); }catch(e){ oldData = null; }
+        var oldReworks = (oldData && Array.isArray(oldData.reworks)) ? oldData.reworks : [];
+        if (!oldReworks.length) return { data: sharedData, migrated: false };
+        var seen = {};
+        sharedData.reworks.forEach(function(e){ if (e && e.id) seen[e.id] = true; });
+        var added = false;
+        oldReworks.forEach(function(e){
+          if (e && e.id && !seen[e.id]){ sharedData.reworks.push(e); seen[e.id] = true; added = true; }
+        });
+        if (added){
+          sharedData.reworks.sort(function(a, b){
+            var at = (a && a.createdAt) || "", bt = (b && b.createdAt) || "";
+            return bt < at ? -1 : bt > at ? 1 : 0;
+          });
+        }
+        return { data: sharedData, migrated: added };
+      }).catch(function(){ return { data: sharedData, migrated: false }; /* no old file, or unreadable -- nothing to migrate */ });
   }
   // Resolves to {dataHandle, pdfHandle} -- flat gets its own dedicated PDF
   // Files/ branch (create:true, cheap once created); legacy reuses the
-  // SAME itp-delivery-rework/<Level>/<Room>/ folder for both, exactly like
+  // SAME itp-install-rework/<Level>/<Room>/ folder for both, exactly like
   // ensureItpRoomFolder does for the checklist's own JSON+PDF pair.
   function ensureReworkFolder(){
     if (state.projectIsFlat){
@@ -4900,18 +5106,23 @@ body.plan-fullscreen .plan-viewport{
      pipeline order, using the family's own shared vocabulary so Machine
      Schedule / Manufacture ITP / Install ITP can set the same values on a
      rework entry later. Kept on the entry as {status, statusAt, statusBy,
-     statusHistory[]}. Ticking "Received back on site" moves it to
-     "received"; Save & close out then locks it. An entry saved before this
-     shipped has no status -> "logged". */
+     statusHistory[]}.
+     UPDATE (2026-09-26, NEXT_RUN_NOTES.md item 9 remainder, see the rework-
+     tracker block comment above for the full picture) -- the old separate
+     "received" stage (a plain checkbox, no photo/pin requirement) is
+     retired as its own pipeline value and collapses onto the "delivered"
+     value already sitting unused above it: "Delivered to site" is now both
+     the label and the one real milestone, captured HERE (this app, and
+     only this app) via a required photo+pin -- see confirmPinPlacement's
+     own rework branch, and goToAddReworkDeliveryPin, below. */
   var REWORK_STATES = [
     { value: "logged",       label: "Logged",                 short: "Logged" },
     { value: "machined",     label: "Cut (machined)",         short: "Cut" },
     { value: "manufactured", label: "Manufactured",           short: "Manufactured" },
-    { value: "delivered",    label: "Delivered to site",      short: "Delivered" },
-    { value: "received",     label: "Received back on site",  short: "Received" }
+    { value: "delivered",    label: "Delivered to site",      short: "Delivered" }
   ];
   function reworkStateOf(entry){
-    var v = (entry && entry.status) || (entry && entry.received ? "received" : "logged");
+    var v = (entry && entry.status) || (entry && entry.received ? "delivered" : "logged");
     for (var i = 0; i < REWORK_STATES.length; i++) if (REWORK_STATES[i].value === v) return REWORK_STATES[i];
     return REWORK_STATES[0];
   }
@@ -4983,7 +5194,18 @@ body.plan-fullscreen .plan-viewport{
       if (!data.level) data.level = state.levelName;
       if (!data.room) data.room = state.roomName;
       reworkState.joineryCode = joineryCode;
-      reworkState.data = data;
+      // One-time pickup of anything this app logged under its own OLD,
+      // pre-2026-09-26 rework file for this item (see this block's own
+      // comment above) -- best-effort, never blocks opening the screen.
+      return migrateOldDeliveryReworkEntries(state.levelName, state.roomName, joineryCode, data);
+    }).then(function(result){
+      reworkState.data = result.data;
+      // Persist the merge right away when it actually picked something up,
+      // so it isn't just held in this session's memory -- see
+      // migrateOldDeliveryReworkEntries's own comment. writeReworkFile()
+      // also regenerates the cumulative PDF for the newly-merged entries.
+      return result.migrated ? writeReworkFile() : Promise.resolve();
+    }).then(function(){
       document.getElementById("reworkHeading").textContent = "Rework — " + joineryCode;
       resetReworkForm();
       renderReworkList();
@@ -4995,11 +5217,13 @@ body.plan-fullscreen .plan-viewport{
   });
 
   /* ---- Outstanding reworks page ----
-     Reads every rework file in the project -- legacy: itp-delivery-rework/
-     <Level>/<Room>/*.json (level and room come from the path); flat: the
-     one Delivery ITP Rework folder (level/room from the file, stamped since
-     v14, else looked up by joinery code in joinery-items.json). Rework is
-     rare, so this is a few small files; it's on-demand only. */
+     Reads every rework file in the project -- legacy: itp-install-rework/
+     <Level>/<Room>/*.json (level and room come from the path; shared with
+     Install ITP since 2026-09-26 -- see the rework-tracker block comment
+     above); flat: the one Install ITP Rework folder (level/room from the
+     file, stamped since v14, else looked up by joinery code in
+     joinery-items.json). Rework is rare, so this is a few small files;
+     it's on-demand only. */
   function listJsonFileHandles(dirH){
     return listEntriesCancellable(dirH, planBgGeneration, function(e){ return e.kind === "file" && /\.json$/i.test(e.name); });
   }
@@ -5029,7 +5253,7 @@ body.plan-fullscreen .plan-viewport{
         }));
       });
     } else {
-      p = projectDir(["itp-delivery-rework"], false).then(function(rootH){
+      p = projectDir(["itp-install-rework"], false).then(function(rootH){
         return listEntriesCancellable(rootH, planBgGeneration, function(e){ return e.kind === "directory"; });
       }, function(){ return []; }).then(function(levelDirs){
         return Promise.all(levelDirs.map(function(levelH){
@@ -5059,7 +5283,7 @@ body.plan-fullscreen .plan-viewport{
       endTimer(list.length + " open");
       reworksPageList.innerHTML = "";
       if (!list.length){
-        reworksPageList.innerHTML = '<p class="rework-empty">No outstanding rework — everything logged has been received back and closed out.</p>';
+        reworksPageList.innerHTML = '<p class="rework-empty">No outstanding rework — everything logged has been delivered to site and closed out.</p>';
         return;
       }
       var lastGroup = null;
@@ -5235,7 +5459,7 @@ body.plan-fullscreen .plan-viewport{
         // button below.
         var closedTag = document.createElement("div");
         closedTag.className = "rework-closed-tag";
-        closedTag.textContent = "✔ CLOSED OUT" + (entry.receivedDate ? " — " + entry.receivedDate : "") + (entry.receivedBy ? " — received by " + entry.receivedBy : "");
+        closedTag.textContent = "✔ CLOSED OUT" + (entry.receivedDate ? " — " + entry.receivedDate : "") + (entry.receivedBy ? " — delivered by " + entry.receivedBy : "");
         card.appendChild(closedTag);
       }
 
@@ -5266,19 +5490,26 @@ body.plan-fullscreen .plan-viewport{
         stateLbl.textContent = "State";
         var stateSel = document.createElement("select");
         stateSel.className = "mbtn rework-state-select";
-        REWORK_STATES.forEach(function(st){
+        // "Delivered to site" is excluded from this manual dropdown
+        // (2026-09-26) -- it's only ever set via the photo+pin flow below,
+        // never hand-picked (that would let it be marked delivered with no
+        // pin or photo on file, exactly what this change was meant to
+        // prevent).
+        REWORK_STATES.filter(function(st){ return st.value !== "delivered"; }).forEach(function(st){
           var o = document.createElement("option");
           o.value = st.value; o.textContent = st.label;
           stateSel.appendChild(o);
         });
-        stateSel.value = reworkStateOf(entry).value;
+        var currentStateValue = reworkStateOf(entry).value;
+        if (currentStateValue === "delivered"){
+          var deliveredOpt = document.createElement("option");
+          deliveredOpt.value = "delivered"; deliveredOpt.textContent = "Delivered to site";
+          stateSel.appendChild(deliveredOpt);
+        }
+        stateSel.value = currentStateValue;
+        stateSel.disabled = currentStateValue === "delivered";
         stateSel.addEventListener("change", function(){
           var v = stateSel.value;
-          if (v === "received" && !entry.received){
-            entry.received = true;
-            if (!entry.receivedDate) entry.receivedDate = new Date().toISOString().slice(0, 10);
-            if (!entry.receivedBy && deviceUserName) entry.receivedBy = deviceUserName;
-          }
           if (setReworkState(entry, v)){
             renderReworkList();
             writeReworkFile();
@@ -5303,53 +5534,41 @@ body.plan-fullscreen .plan-viewport{
         card.appendChild(gal);
       }
 
-      var recRow = document.createElement("label");
+      // "Delivered to site" (2026-09-26, renamed from the old plain
+      // "Received back on site" checkbox) -- now requires a photo+pin,
+      // captured via the Level Plan screen exactly like a regular item's
+      // own delivery-location pin (see goToAddReworkDeliveryPin and
+      // confirmPinPlacement's own rework branch below). Delivered shows a
+      // thumbnail of the captured snapshot (tap to zoom); not-yet-delivered
+      // shows the button that starts that flow.
+      var recRow = document.createElement("div");
       recRow.className = "rework-received-row";
-      var cb = document.createElement("input");
-      cb.type = "checkbox"; cb.className = "rework-received-cb";
-      cb.checked = !!entry.received;
-      var span = document.createElement("span");
-      span.textContent = "Received back on site";
-      var dateInput = document.createElement("input");
-      dateInput.type = "date";
-      dateInput.value = entry.receivedDate || "";
-      dateInput.disabled = !entry.received;
-      // "Received by" -- pre-filled with whoever is signed in on this
-      // device the moment the box is ticked, editable in case someone else
-      // took the delivery. Saved on the entry and printed on the rework
-      // PDF's RECEIVED tag.
-      var byLabel = document.createElement("span");
-      byLabel.textContent = "by";
-      var byInput = document.createElement("input");
-      byInput.type = "text"; byInput.className = "rework-received-by"; byInput.placeholder = "Received by";
-      byInput.value = entry.receivedBy || "";
-      byInput.disabled = !entry.received;
-      cb.addEventListener("change", function(){
-        entry.received = cb.checked;
-        if (entry.received && !entry.receivedDate){
-          entry.receivedDate = new Date().toISOString().slice(0, 10);
-          dateInput.value = entry.receivedDate;
+      if (entry.received){
+        if (entry.locationSnapshot && entry.locationSnapshot.dataUrl){
+          var snapThumb = document.createElement("img");
+          snapThumb.className = "rework-delivery-thumb";
+          snapThumb.src = entry.locationSnapshot.dataUrl;
+          snapThumb.alt = "Delivery location snapshot";
+          makePhotoZoomable(snapThumb, entry.locationSnapshot.dataUrl);
+          recRow.appendChild(snapThumb);
         }
-        if (entry.received && !entry.receivedBy && deviceUserName){
-          entry.receivedBy = deviceUserName;
-          byInput.value = deviceUserName;
+        var recText = document.createElement("span");
+        recText.textContent = "Delivered to site" + (entry.receivedDate ? " — " + entry.receivedDate : "") + (entry.receivedBy ? " — " + entry.receivedBy : "");
+        recRow.appendChild(recText);
+        if (!entry.closed){
+          var retakeBtn = document.createElement("button");
+          retakeBtn.type = "button"; retakeBtn.className = "mbtn";
+          retakeBtn.textContent = "Retake pin";
+          retakeBtn.addEventListener("click", function(){ goToAddReworkDeliveryPin(entry); });
+          recRow.appendChild(retakeBtn);
         }
-        dateInput.disabled = !entry.received;
-        byInput.disabled = !entry.received;
-        // Keep the state in step: received <-> the tick.
-        if (entry.received) setReworkState(entry, "received");
-        else if (reworkStateOf(entry).value === "received") setReworkState(entry, "delivered");
-        writeReworkFile().then(renderReworkList);
-      });
-      dateInput.addEventListener("change", function(){
-        entry.receivedDate = dateInput.value || null;
-        writeReworkFile();
-      });
-      byInput.addEventListener("change", function(){
-        entry.receivedBy = byInput.value.trim();
-        writeReworkFile();
-      });
-      recRow.appendChild(cb); recRow.appendChild(span); recRow.appendChild(dateInput); recRow.appendChild(byLabel); recRow.appendChild(byInput);
+      } else {
+        var deliverBtn = document.createElement("button");
+        deliverBtn.type = "button"; deliverBtn.className = "mbtn mbtn-accent";
+        deliverBtn.textContent = "Drop pin + mark delivered";
+        deliverBtn.addEventListener("click", function(){ goToAddReworkDeliveryPin(entry); });
+        recRow.appendChild(deliverBtn);
+      }
       card.appendChild(recRow);
 
       var actions = document.createElement("div");
@@ -5357,21 +5576,16 @@ body.plan-fullscreen .plan-viewport{
       if (entry.closed){
         // Once closed out nothing on the entry can change any more, and it
         // can't be deleted.
-        cb.disabled = true; dateInput.disabled = true; byInput.disabled = true;
         card.appendChild(actions);
         reworkListEl.appendChild(card);
         return;
       }
       var closeBtn = document.createElement("button");
       closeBtn.type = "button"; closeBtn.className = "mbtn mbtn-accent rework-close-out-btn"; closeBtn.textContent = "Save & close out";
-      closeBtn.style.display = entry.received ? "" : "none"; // only offered once "Received back on site" is ticked
-      cb.addEventListener("change", function(){ closeBtn.style.display = cb.checked ? "" : "none"; });
+      closeBtn.style.display = entry.received ? "" : "none"; // only offered once "Delivered to site" is set
       closeBtn.addEventListener("click", function(){
-        if (!entry.received){ showToast("Tick \"Received back on site\" first."); return; }
-        if (!entry.receivedDate){ showToast("Set the date it was received."); return; }
-        if (!(byInput.value || "").trim()){ showToast("Enter who received it."); byInput.focus(); return; }
-        entry.receivedBy = byInput.value.trim();
-        genericConfirmLabelled("Close out this rework entry as received? It becomes read only.", "Save & close out", "Not yet").then(function(ok){
+        if (!entry.received){ showToast("Drop a pin to mark this delivered to site first."); return; }
+        genericConfirmLabelled("Close out this rework entry? It becomes read only.", "Save & close out", "Not yet").then(function(ok){
           if (!ok) return;
           entry.closed = true;
           entry.closedAt = new Date().toISOString();
@@ -5411,8 +5625,10 @@ body.plan-fullscreen .plan-viewport{
      stapled together in the same folder. Below the header, one card per
      rework entry (newest first, same order as this screen's own history
      list): a still-outstanding entry gets a red-bordered card with a red
-     "REWORK PENDING" tag, a received one gets a plain gray card with a
-     green "RECEIVED" tag. Every entry's own photos are drawn inline inside
+     "REWORK PENDING" tag, a delivered one gets a plain gray card with a
+     green "DELIVERED" tag (2026-09-26: was "RECEIVED", renamed along with
+     the on-screen milestone -- see REWORK_STATES's own comment). Every
+     entry's own photos are drawn inline inside
      its own card (small thumbnail row, date/name-stamped via the same
      formatPdfImageStamp the checklist's own trailing photo pages use)
      rather than collected into one trailing grid, since here each photo
@@ -5488,7 +5704,7 @@ body.plan-fullscreen .plan-viewport{
       var textLines = entry.text ? wrapText(doc, entry.text, contentW - 24) : [];
       var statusReceived = !!entry.received;
       var statusText = statusReceived
-        ? (entry.closed ? "CLOSED OUT" : "RECEIVED") + (entry.receivedDate ? " — " + entry.receivedDate : "") + (entry.receivedBy ? " — by " + entry.receivedBy : "")
+        ? (entry.closed ? "CLOSED OUT" : "DELIVERED") + (entry.receivedDate ? " — " + entry.receivedDate : "") + (entry.receivedBy ? " — by " + entry.receivedBy : "")
         : "REWORK PENDING — " + reworkStateOf(entry).label.toUpperCase();
 
       // Photo thumbnails, up to 3 per row, inside this entry's own card.
@@ -5731,9 +5947,38 @@ body.plan-fullscreen .plan-viewport{
     rowEls.push({ triButtons: triButtons, commentInput: commentInput });
   });
 
+  // PIN-gated sign-off name picker (2026-09-26) -- fills a signoff block's
+  // <select class="so-name-select"> from the shared name+PIN registry,
+  // sorted the same way the identity selector is. `currentName` (already
+  // on the data being loaded) is pre-selected even if it's no longer in
+  // the registry -- an old signed checklist's signer must keep showing
+  // correctly rather than silently reverting to the placeholder.
+  function populateSignoffNameSelect(selectEl, currentName){
+    return getUsersRowsCached().then(function(rows){
+      var names = rows.map(function(r){ return r.name; }).filter(Boolean);
+      names.sort(function(a, b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+      selectEl.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = ""; placeholder.textContent = "Select name…";
+      selectEl.appendChild(placeholder);
+      names.forEach(function(n){
+        var opt = document.createElement("option");
+        opt.value = n; opt.textContent = n;
+        selectEl.appendChild(opt);
+      });
+      if (currentName && names.indexOf(currentName) === -1){
+        var stale = document.createElement("option");
+        stale.value = currentName; stale.textContent = currentName + " (not in registry)";
+        selectEl.appendChild(stale);
+      }
+      selectEl.value = currentName || "";
+    }, function(){ /* utzline-users.csv not readable yet -- leave just the placeholder */ });
+  }
+
   signoffBlocks.forEach(function(block){
     var role = block.getAttribute("data-role");
-    var nameInput = block.querySelector(".so-name");
+    var pinGated = block.getAttribute("data-pin-gated") === "true";
+    var nameInput = block.querySelector(".so-name, .so-name-select");
     var dateInput = block.querySelector(".so-date");
     var canvas = block.querySelector(".sig-canvas");
     var hint = block.querySelector(".sig-pad-empty-hint");
@@ -5743,18 +5988,57 @@ body.plan-fullscreen .plan-viewport{
       if (state.currentData) state.currentData.signoff[role].sig = pad.toDataURL();
       markDirty();
     };
-    nameInput.addEventListener("input", function(){
+    function commitName(name, verified){
       if (!state.currentData) return;
-      state.currentData.signoff[role].name = nameInput.value;
-      // Auto-populate today's date the moment a name is first typed, but
-      // never override a date someone deliberately set (or changed) --
+      state.currentData.signoff[role].name = name;
+      if (pinGated) state.currentData.signoff[role].pinVerified = !!verified;
+      // Auto-populate today's date the moment a name is first committed,
+      // but never override a date someone deliberately set (or changed) --
       // only fills in while the field is still empty.
-      if (nameInput.value.trim() && !dateInput.value){
+      if (name && !dateInput.value){
         dateInput.value = todayISO();
         state.currentData.signoff[role].date = dateInput.value;
       }
       markDirty();
-    });
+    }
+    var ref = { pad: pad, nameInput: nameInput, dateInput: dateInput, pinGated: pinGated, lastValue: "" };
+    signaturePads[role] = ref;
+    // PIN entry required for sign-offs (2026-09-26) -- Andrew: "pin entry
+    // required for sign offs. stopping anyone from randomly signing off
+    // under another users name." Picking a name from the registry
+    // immediately opens the numberpad to verify THAT name's own PIN before
+    // it's accepted (same mechanism as the device identity selector's own
+    // name+PIN flow) -- a wrong PIN or Cancel reverts the select back to
+    // whatever was last actually committed, never left on the picked-but-
+    // unverified option.
+    if (pinGated){
+      nameInput.addEventListener("change", function(){
+        var picked = nameInput.value;
+        if (!picked){ ref.lastValue = ""; commitName("", false); return; }
+        openNumberpad({
+          title: "Enter PIN",
+          subtitle: "for “" + picked + "”",
+          verify: function(pin){
+            return readUsersCsv().then(function(rows){
+              var row = findUserRowCI(rows, picked);
+              return !!(row && row.pin === pin);
+            });
+          }
+        }).then(function(pin){
+          if (pin === null){ nameInput.value = ref.lastValue; return; }
+          ref.lastValue = picked;
+          commitName(picked, true);
+        }).catch(function(err){
+          console.error("Checking sign-off PIN failed:", err);
+          showToast("Couldn't read utzline-users.csv.");
+          nameInput.value = ref.lastValue;
+        });
+      });
+    } else {
+      nameInput.addEventListener("input", function(){
+        commitName(nameInput.value, false);
+      });
+    }
     dateInput.addEventListener("input", function(){
       if (state.currentData) state.currentData.signoff[role].date = dateInput.value;
       markDirty();
@@ -5764,7 +6048,6 @@ body.plan-fullscreen .plan-viewport{
       if (state.currentData) state.currentData.signoff[role].sig = null;
       markDirty();
     });
-    signaturePads[role] = { pad: pad, nameInput: nameInput, dateInput: dateInput };
   });
 
   notesEl.addEventListener("input", function(){
@@ -6246,13 +6529,25 @@ body.plan-fullscreen .plan-viewport{
     notesEl.value = data.notes || "";
     renderPhotoGallery(data);
     renderLocationSnapshotUI(data);
-    ["driver", "supervisor"].forEach(function(role){
+    // (2026-09-26) Iterates whatever blocks actually got wired (just
+    // "driver" now, since the supervisor block is retired) rather than a
+    // hardcoded role list, so an old checklist's leftover supervisor data
+    // is simply never rendered/re-populated, without needing its own
+    // special case here.
+    Object.keys(signaturePads).forEach(function(role){
       var ref = signaturePads[role];
-      ref.nameInput.value = data.signoff[role].name || "";
-      ref.dateInput.value = data.signoff[role].date || "";
+      var so = (data.signoff && data.signoff[role]) || { name: "", date: "", sig: null };
+      if (ref.pinGated){
+        populateSignoffNameSelect(ref.nameInput, so.name || "").then(function(){
+          ref.lastValue = so.name || "";
+        });
+      } else {
+        ref.nameInput.value = so.name || "";
+      }
+      ref.dateInput.value = so.date || "";
       ref.pad.resize();
       ref.pad.clear();
-      ref.pad.loadFromDataURL(data.signoff[role].sig);
+      ref.pad.loadFromDataURL(so.sig);
     });
   }
 
@@ -6260,14 +6555,15 @@ body.plan-fullscreen .plan-viewport{
   /* ---- Locked (read-only) once signed off -- Andrew, 2026-09-25 (ported
      from Install ITP v31): "once an itp is saved and exported (complete),
      that itp page becomes locked (read only)". A checklist that is signed
-     off (both driver + supervisor signatures, no row flagged "No" -- this
-     app's own isChecklistSignedOff rule, the same one that triggers the
-     PDF) opens read-only: every answer button, comment, the notes, both
-     signature blocks, the photo controls AND this app's own "Add location
-     pin" button are disabled, a banner says so, and the action button
-     reads "Exit" (nothing to save). A flagged one (signatures present but
-     a "No" outstanding) is NOT locked -- it still needs fixing. "View job
-     note", "View on plan" and "View on map" keep working. */
+     off (the driver's own signature, no row flagged "No" -- this app's own
+     isChecklistSignedOff rule, the same one that triggers the PDF -- the
+     supervisor block is retired, see blankChecklist's own note) opens
+     read-only: every answer button, comment, the notes, the signature
+     block, the photo controls AND this app's own "Add location pin" button
+     are disabled, a banner says so, and the action button reads "Exit"
+     (nothing to save). A flagged one (signature present but a "No"
+     outstanding) is NOT locked -- it still needs fixing. "View job note",
+     "View on plan" and "View on map" keep working. */
   var screenChecklistEl = document.getElementById("screenChecklist");
   var checklistLockedBanner = document.getElementById("checklistLockedBanner");
   var checklistLocked = false;
@@ -6275,7 +6571,9 @@ body.plan-fullscreen .plan-viewport{
     checklistLocked = !!locked;
     screenChecklistEl.classList.toggle("locked", checklistLocked);
     checklistLockedBanner.hidden = !checklistLocked;
-    screenChecklistEl.querySelectorAll("input, textarea, #checkRowsEl button").forEach(function(el){
+    // (2026-09-26) "select" added -- the driver sign-off name field is now
+    // a <select> (the PIN-gated registry picker), not a text <input>.
+    screenChecklistEl.querySelectorAll("input, select, textarea, #checkRowsEl button").forEach(function(el){
       if (el.id === "photoFileInput") return;
       el.disabled = checklistLocked;
     });
@@ -6811,21 +7109,28 @@ body.plan-fullscreen .plan-viewport{
     doc.text("SIGN-OFF / APPROVAL", margin, y);
     y += 10;
     // Side by side, not stacked (Andrew, 2026-09-19: "bottom signatures on
-    // the exports to be side by side to save space") -- both roles now
-    // share one row of two half-width columns instead of each taking the
-    // full content width on its own line. The old layout put the signature
-    // box beside the Name/Date text on the same line, which only worked at
-    // full page width; at half width there isn't room for both side by
-    // side, so each column now stacks its own label/Name/Date above its
-    // own signature box instead -- taller per column, but only ONE row of
-    // two instead of two full-width rows, which is the actual space saving
-    // requested.
-    var roles = [
-      ["driver", "Delivery Driver / Transport Rep."],
-      ["supervisor", "Metro Site Supervisor (Receiving)"]
-    ];
+    // the exports to be side by side to save space") -- when there are two
+    // roles to show, they share one row of two half-width columns instead
+    // of each taking the full content width on its own line; the old
+    // layout put the signature box beside the Name/Date text on the same
+    // line, which only worked at full page width; at half width there
+    // isn't room for both side by side, so each column stacks its own
+    // label/Name/Date above its own signature box instead -- taller per
+    // column, but only ONE row of two instead of two full-width rows.
+    //
+    // (2026-09-26, PIN-gated sign-offs) "remove the site supervisor sign
+    // off, this is no longer required" -- the supervisor block is retired,
+    // so a NEW checklist only ever has "driver" here, full width. An OLD
+    // checklist that already has real supervisor data on disk from before
+    // this change (name/date/sig it was actually signed with) still shows
+    // it, side by side as before, rather than silently dropping history
+    // that was genuinely captured -- see blankChecklist's own comment.
+    var supervisorSo = data.signoff && data.signoff.supervisor;
+    var supervisorHasData = !!(supervisorSo && (supervisorSo.name || supervisorSo.sig || supervisorSo.date));
+    var roles = [["driver", "Delivery Driver / Transport Rep."]];
+    if (supervisorHasData) roles.push(["supervisor", "Metro Site Supervisor (Receiving)"]);
     var sigGap = 14;
-    var sigColW = (contentW - sigGap) / 2;
+    var sigColW = roles.length > 1 ? (contentW - sigGap) / 2 : contentW;
     var sigBlockH = 104;
     if (y + sigBlockH > pageH - margin){ doc.addPage(); y = topContentY; }
     roles.forEach(function(r, idx){

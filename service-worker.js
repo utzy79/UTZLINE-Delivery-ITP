@@ -110,8 +110,34 @@
 // manufactured/delivered/installed each shift up one rank (4/5/6, was
 // 3/4/5) to make room for "machined" at rank 3. No data migration: this
 // is additive to the existing forward-only status chain.)
+// v16 (2026-09-26): Rework Register remainder -- this app now owns the
+// "Delivered to site" milestone (photo+pin required, via the existing
+// delivery-location-pin mechanics), rework file consolidated onto Install
+// ITP's shared path with a one-time lossless migration off this app's own
+// old path, "received" REWORK_STATES value collapsed onto "delivered".
+// Plus the held status-icon revert from the icon-sweep round (machined
+// ⚙️, in_manufacture 🏭) -- see README.md's v16 entry for both.
+// v17 (2026-09-26): PIN-gated sign-offs -- driver name replaced by the
+// shared name+PIN registry's own picker, PIN-verified at selection; the
+// Metro Site Supervisor sign-off block is retired entirely (old data kept,
+// just no longer collected). See README.md's v17 entry.
+// v18 (2026-09-26): "Go to location"/"Go to pin" zoom feel now matches
+// UTZLINE Projects (general note, not scoped to one app) -- Andrew's own
+// final word after a dictation trail: "view on plan in projects is
+// actually the perfect zoom level." centrePlanOn's single-marker jump now
+// uses Projects' own Math.max(planView.scale, 1) (at least native 1:1
+// pixel scale), replacing the old fitScale*5 multiplier. PLAN_FOCUS_ZOOM
+// is kept as the multi-marker bounding-box zoom CAP (the "Go to room"
+// case, a different feature) -- untouched. This app's OWN, separate
+// "View on plan"/"View on map"/pin-placement mechanism
+// (centerPlanOnPoint/PLAN_CENTER_VIEW_WORLD_SIZE, a deliberately
+// fixed-world-size crop so a live view matches its own saved location-
+// snapshot thumbnail) is untouched -- out of this note's scope.
+// run_room_list_alpha_and_marker_menu.js updated (stale fitScale*5
+// assertion replaced with a >=1 native-scale check); full 15-file suite
+// green.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-delivery-itp-cache-v15";
+var CACHE_NAME = "utzline-delivery-itp-cache-v18";
 
 var PRECACHE_URLS = [
   "./",
