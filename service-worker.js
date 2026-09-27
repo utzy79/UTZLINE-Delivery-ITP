@@ -148,8 +148,16 @@
 // correct, in both exportChecklistPdf and exportReworkPdf) is unchanged,
 // just now sourced from the shared file instead of local storage. Covered
 // by the new run_company_logo_readonly.js; full suite green (16/16).
+//
+// v20 (2026-09-27): new "Sub Orders" summary on the checklist screen --
+// Andrew: "ok now we need all joinery summary pages to show the associated
+// orders. with the option to mark them as recieved." Read-only against
+// UTZLINE Sub Orders' own Orders/Files folders except for a per-order
+// received/date write-back (shallow-copy rebuild, never an explicit field
+// list -- see index.html's own top-of-file comment). New
+// run_sub_orders_summary.js; full suite green.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-delivery-itp-cache-v19";
+var CACHE_NAME = "utzline-delivery-itp-cache-v20";
 
 var PRECACHE_URLS = [
   "./",
