@@ -1,11 +1,13 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v20** (its own independent version line, separate from
+**Current version: v21** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
 line every time a new build ships. This line has drifted behind the actual
 shipped cache version twice before today — see the v4 and "v2" entries
 below for what each catch-up covers; `next-version-notes.md` in the project
 is the authoritative record for anything not detailed here.)
+
+**v21 (2026-09-27):** Hides the **Schedule Backups** folder from the project list. Scheduler v29 now keeps its daily spreadsheet backups in that folder, directly in the main Projects folder (Andrew: *"a schedule backups folder directly in the main folder ... I meant in the main folder. Not the individual projects folder."*). Every app lists every folder in the main folder as a project, so each one now leaves that folder out: `isReservedRootFolderName`, the same one-line rule in every app. Tested across all 11 apps by `pdftest-projects/run_schedule_backups_folder_hidden.js`, which fails on every app's previous build and passes on the new ones.
 
 **v20 (2026-09-27):** New "Sub Orders" summary on the checklist screen, with mark-as-received write-back. Andrew, verbatim, alongside the identical request across the rest of the family: "ok now we need all joinery summary pages to show the associated orders. with the option to mark them as recieved. the main schedule also needs a mark as received button for orders. on the schedule." This app's own "joinery summary page" is the checklist screen itself (`#screenChecklist`) rather than a separate cards-based item dialog, so the new section is a plain inline block in that same linear form — a "Sub Orders" heading plus `#subOrdersListEl` — sitting between the existing Location section and the final Save & exit row, matching every other section here (Photos, Location) rather than a popup.
 
