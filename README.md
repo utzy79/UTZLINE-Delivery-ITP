@@ -1,11 +1,18 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v21** (its own independent version line, separate from
+**Current version: v22** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
 line every time a new build ships. This line has drifted behind the actual
 shipped cache version twice before today — see the v4 and "v2" entries
 below for what each catch-up covers; `next-version-notes.md` in the project
 is the authoritative record for anything not detailed here.)
+
+**v22 (2026-09-28) — Reworks: delivered is its own file, one PDF per rework, delivered in green at the bottom.** The rework round (same requests as Install ITP v43: *"also need to fix this rework conflict…"*, *"reworks that are delivered to be green border / text and sent to bottom of page"*, *"only overflow to page 2,3,etc if they dont fit on page 1"*). Standard: project doc `claude/utzline-rework-event-standard-v1.md`.
+- **Drop pin + mark delivered** no longer rewrites the item's shared rework file. It saves one "delivered" file in the item's log folder, named with the driver's name and the date and time, holding the date, the pin and the location photo. **Retake pin** saves another one, and the newest pin and photo are the ones shown. State changes and close-out are their own files too. Only adding or deleting a rework still writes the shared file.
+- **Every app's changes show here.** Cut (Machine Schedule), Complete — ready to deliver (Scheduler), Delivered, Closed out, and comments from any app. Each rework card has its status log and a comment box.
+- **One PDF per rework**, named with your name and the date and time. It's made when a rework is added, when it's delivered, when it's closed out, and on Rework PDF / Share. Details and the whole status log come first. The photos start on page 1 and only run on when they don't fit, with the delivery-location photo included.
+- **Delivered reworks go green, at the bottom**, in a **Delivered (N)** section. Close-out still needs the pin dropped first.
+- Tests: `pdftest-delivery-itp/run_delivery_itp_rework_tracker.js` updated for event files. `pdftest-projects/run_rework_cross_app.js` is new. `pdftest-projects/run_delivery_itp_auto_export_on_signoff.js` is refreshed for the single PIN-gated driver sign-off.
 
 **v21 (2026-09-27):** Hides the **Schedule Backups** folder from the project list. Scheduler v29 now keeps its daily spreadsheet backups in that folder, directly in the main Projects folder (Andrew: *"a schedule backups folder directly in the main folder ... I meant in the main folder. Not the individual projects folder."*). Every app lists every folder in the main folder as a project, so each one now leaves that folder out: `isReservedRootFolderName`, the same one-line rule in every app. Tested across all 11 apps by `pdftest-projects/run_schedule_backups_folder_hidden.js`, which fails on every app's previous build and passes on the new ones.
 

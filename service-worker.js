@@ -158,7 +158,8 @@
 // run_sub_orders_summary.js; full suite green.
 var ICON_VERSION = "v1";
 // v21 (2026-09-27): "Schedule Backups" folder hidden from the project list.
-var CACHE_NAME = "utzline-delivery-itp-cache-v21";
+// v22 (2026-09-28): delivered/state/closed as event files (shared UtzRework module), per-rework PDFs, delivered in green at the bottom.
+var CACHE_NAME = "utzline-delivery-itp-cache-v22";
 
 var PRECACHE_URLS = [
   "./",
