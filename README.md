@@ -1,11 +1,16 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v22** (its own independent version line, separate from
+**Current version: v23 (RC 1.0)** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
 line every time a new build ships. This line has drifted behind the actual
 shipped cache version twice before today — see the v4 and "v2" entries
 below for what each catch-up covers; `next-version-notes.md` in the project
 is the authoritative record for anything not detailed here.)
+
+**v23 (2026-09-29) — RC 1.0.** Andrew: *"ok, now change them all to version RC 1.0. and have that on the logos (small)"*.
+
+- The app is now **RC 1.0** (release candidate 1.0) across the UTZLINE family. A small **RC 1.0** tag sits beside the logo in the header.
+- The build number (v23) still counts up underneath, so installed copies pick up each update. It's also what the Windows installer "Setup RC 1.0" contains.
 
 **v22 (2026-09-28) — Reworks: delivered is its own file, one PDF per rework, delivered in green at the bottom.** The rework round (same requests as Install ITP v43: *"also need to fix this rework conflict…"*, *"reworks that are delivered to be green border / text and sent to bottom of page"*, *"only overflow to page 2,3,etc if they dont fit on page 1"*). Standard: project doc `claude/utzline-rework-event-standard-v1.md`.
 - **Drop pin + mark delivered** no longer rewrites the item's shared rework file. It saves one "delivered" file in the item's log folder, named with the driver's name and the date and time, holding the date, the pin and the location photo. **Retake pin** saves another one, and the newest pin and photo are the ones shown. State changes and close-out are their own files too. Only adding or deleting a rework still writes the shared file.
