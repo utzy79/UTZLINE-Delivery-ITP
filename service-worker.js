@@ -161,7 +161,9 @@ var ICON_VERSION = "v1";
 // v22 (2026-09-28): delivered/state/closed as event files (shared UtzRework module), per-rework PDFs, delivered in green at the bottom.
 // v23 (2026-09-29): RC 1.0 -- the version is shown as RC 1.0, with a small "RC 1.0" tag on the logo.
 // v24 (2026-09-29): RC 1.0 -- "Projects on this device": pick the jobs this device works on; sync help; get ready for offline.
-var CACHE_NAME = "utzline-delivery-itp-cache-v24";
+// v25 (2026-09-29): RC 1.0 -- 🏭 for a job note too; every save retried + checked; no "still syncing?" guesses.
+// v26 (2026-09-29): RC 1.0 -- every checklist save also writes its own change file; opening reads them back (two tablets saving offline both keep their changes).
+var CACHE_NAME = "utzline-delivery-itp-cache-v26";
 
 var PRECACHE_URLS = [
   "./",

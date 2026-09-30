@@ -1,11 +1,26 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v24 (RC 1.0)** (its own independent version line, separate from
+**Current version: v26 (RC 1.0)** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
 line every time a new build ships. This line has drifted behind the actual
 shipped cache version twice before today — see the v4 and "v2" entries
 below for what each catch-up covers; `next-version-notes.md` in the project
 is the authoritative record for anything not detailed here.)
+
+**v26 (2026-09-29) — RC 1.0: every checklist save also writes its own change file.**
+
+- **Two tablets can't lose each other's checklist changes any more.** Andrew: *"shouldnt everything run like this. isnt that the ultimate failsafe"*. Every save still writes the item's whole checklist file (so the schedules and Projects read it as before), and **also** a small change file of its own that's never rewritten: `Project Saves/UTZLINE ITP/Delivery ITP Log/<Level> - <Room> - <Code>/<name> - <date time> - change.json` (a legacy project: a `<Code> log` folder beside the checklist). It holds only what that save changed — the rows, sign-offs, notes and photos that differ from when the item was opened. When two tablets save the same item offline, OneDrive keeps one whole file, but both change files arrive; opening the item puts the other tablet's changes back. For each row, sign-off and field the newest change wins; photos are added and removed one by one.
+- An ordinary open reads the whole file plus a list of the item's change files — only ones the whole file hasn't already taken in are read (normally none), so it stays quick on the 4 GB tablets.
+- A save that doesn't land now says so ("Couldn't save … — try Save & exit again") and Save & exit stays on the checklist. It used to carry on as if it had saved.
+- Two saves of the same file at once are done one after the other.
+- **Every tablet needs this version.** A tablet still on an older ITP only writes the whole file, so its changes aren't protected until it's updated.
+- The delivery pin is a change file too, and the pin shown on the plan / "Go to pin" reads the change files.
+
+**v25 (2026-09-29) — RC 1.0: the factory for In manufacture, every time; every save retried.**
+
+- **🏭 for a job note too.** Andrew: *"viewer is giving me different icond for in manufacture, some of it if th ehammer and spanner, others is the factory, i want the factory throguhout"*. A job note means In manufacture, but an item whose In manufacture step hadn't landed (the Scheduler's job-note bug, fixed in Scheduler v35) or that predates the rule showed 🛠️ on its marker. It now shows 🏭 like the rest.
+- **Every save is retried and checked.** Status events, checklists, reworks, the names list, the status indexes and ITP PDFs: each is read back to check its size, and the whole write is tried again 0.5 s and 1.5 s later if it fails. On Windows, a sync client or antivirus holding a brand-new file for a moment used to fail the save and leave a 0-byte file with nothing said.
+- **No message says "still syncing?" any more.** It was a guess and usually wrong. Messages now say "couldn't read … just now".
 
 **v24 (2026-09-29) — RC 1.0: Projects on this device.** Andrew: *"the onsite apps need an option fo rthe user to pick the projectas they are working on to minimise the syunc on their device"*.
 

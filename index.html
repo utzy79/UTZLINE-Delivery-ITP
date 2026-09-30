@@ -739,6 +739,345 @@ body.plan-fullscreen .plan-viewport{
 .dp-result > div{ margin:0 0 6px; }
 .dp-list{ white-space:pre-wrap; word-break:break-all; font:12px/1.4 ui-monospace,Consolas,monospace; background:var(--surface-0); border-radius:8px; padding:6px 8px; max-height:160px; overflow:auto; color:var(--text-secondary); }
 </style>
+<!-- UTZLINE-ITP-LOG BEGIN (generated from shared/itp-log -- don't edit here) -->
+<script>
+/* ---- UTZLINE ITP change log (2026-09-29) -- one file per save, folded on read ----
+   Andrew: "shouldnt everything run like this. isnt that the ultimate
+   failsafe" -- step 1 of that plan: the three ITP checklists.
+
+   Each checklist is still ONE whole JSON file (the "base"), rewritten on
+   every save, so every app that already reads it keeps working. What's new
+   is that every save ALSO writes one small, never-rewritten event file
+   holding just what that save changed:
+
+     flat:   Project Saves/UTZLINE ITP/<App> Log/<Level> - <Room> - <Code>/
+     legacy: <app's room folder>/<Code> log/
+       "<name> - <YYYY-MM-DD HH-mm-ss-mmm> - change.json"
+       { kind: "change", app, by, at, level, room, joineryId, fileBase,
+         rows?: { "<index>": row }, signoff?: { "<role>": obj|null },
+         fields?: { "<key>": value }, removed?: [key],
+         photosAdded?: [{ key, photo }], photosRemoved?: [key] }
+
+   Two tablets saving the same item offline both land their event files
+   (different names, so OneDrive never has to pick one); whichever base file
+   wins, reading the item puts the other's changes back.
+
+   FOLD -- last writer wins PER PART (one checklist row, one sign-off role,
+   one other field; photos are added / removed one by one). The base carries
+   what it already has folded in, in base._log:
+     seen: [event file names already in this base]
+     at:   { "<part>": "<at>|<event file name>" }   -- who last set each part
+     gone: [photo keys removed]
+   Reading = the base + only the event files it hasn't seen (normally none),
+   each applied to a part only if it's newer than what the base holds. So
+   the order files arrive in never matters, and an ordinary open is one extra
+   folder listing, not one read per save ever made (4 GB tablets).
+
+   A checklist saved by an ITP older than this has no events -- that's fine,
+   it just reads as the base. Tablets still on an older ITP only rewrite the
+   whole file, so their changes don't get this protection until they're
+   updated. */
+(function(global){
+  "use strict";
+
+  var SKIP = { rows: 1, signoff: 1, photos: 1, updatedAt: 1, lastEditedBy: 1, _log: 1 };
+  var READ_RETRY_MS = [600, 1500];
+  var WRITE_RETRY_MS = [500, 1500];
+
+  function p2(n){ return (n < 10 ? "0" : "") + n; }
+  function p3(n){ return (n < 10 ? "00" : n < 100 ? "0" : "") + n; }
+  function stamp(d){
+    return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + " " +
+      p2(d.getHours()) + "-" + p2(d.getMinutes()) + "-" + p2(d.getSeconds()) + "-" + p3(d.getMilliseconds());
+  }
+  // A name inside a file name (the family's overlayUserSlug rules).
+  function userSlug(name){
+    var clean = String(name || "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "").trim().replace(/^[._]+|[._\s]+$/g, "").slice(0, 60);
+    return clean || "Unnamed";
+  }
+  function isNotFound(err){ return !!(err && (err.name === "NotFoundError" || err.name === "TypeMismatchError" || /NotFound/.test(String(err.message || "")))); }
+  function wait(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  // Copies objects and arrays, shares strings (a photo's pixels are never
+  // duplicated in memory -- strings can't change, so sharing them is safe).
+  function clone(v){
+    if (Array.isArray(v)) return v.map(clone);
+    if (v && typeof v === "object"){
+      var o = {};
+      Object.keys(v).forEach(function(k){ o[k] = clone(v[k]); });
+      return o;
+    }
+    return v;
+  }
+  function same(a, b){
+    return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+  }
+  // Photos are only ever added or removed, never edited -- so a photo is
+  // known by when it was added plus its pixels' length and tail.
+  function photoKey(p){
+    if (!p || typeof p !== "object") return "";
+    if (p.id) return "id:" + p.id;
+    var d = String(p.dataUrl || "");
+    return (p.addedAt || "") + "|" + d.length + "|" + d.slice(-24);
+  }
+  function logOf(data){
+    var log = data._log;
+    if (!log || typeof log !== "object" || Array.isArray(log)) log = {};
+    if (!Array.isArray(log.seen)) log.seen = [];
+    if (!log.at || typeof log.at !== "object" || Array.isArray(log.at)) log.at = {};
+    if (!Array.isArray(log.gone)) log.gone = [];
+    data._log = log;
+    return log;
+  }
+  function stampOf(ev){ return String(ev.at || "") + "|" + String(ev._file || ""); }
+
+  /* ------------------------------ what a save changed ------------------------------ */
+  // null when nothing changed.
+  function diff(before, after){
+    before = before || {}; after = after || {};
+    var ch = {}, any = false;
+    var br = Array.isArray(before.rows) ? before.rows : [], ar = Array.isArray(after.rows) ? after.rows : [];
+    for (var i = 0; i < ar.length; i++){
+      if (ar[i] !== undefined && !same(br[i], ar[i])){ (ch.rows = ch.rows || {})[i] = clone(ar[i]); any = true; }
+    }
+    var bs = (before.signoff && typeof before.signoff === "object") ? before.signoff : {};
+    var as = (after.signoff && typeof after.signoff === "object") ? after.signoff : {};
+    Object.keys(bs).concat(Object.keys(as)).forEach(function(role){
+      if (ch.signoff && role in ch.signoff) return;
+      if (!same(bs[role], as[role])){ (ch.signoff = ch.signoff || {})[role] = as[role] === undefined ? null : clone(as[role]); any = true; }
+    });
+    Object.keys(before).concat(Object.keys(after)).forEach(function(k){
+      if (SKIP[k]) return;
+      if (k in after){
+        if ((!ch.fields || !(k in ch.fields)) && !same(before[k], after[k])){ (ch.fields = ch.fields || {})[k] = clone(after[k]); any = true; }
+      } else if (k in before && (!ch.removed || ch.removed.indexOf(k) < 0)){
+        (ch.removed = ch.removed || []).push(k); any = true;
+      }
+    });
+    var bp = Array.isArray(before.photos) ? before.photos : [], ap = Array.isArray(after.photos) ? after.photos : [];
+    var bk = {}, ak = {};
+    bp.forEach(function(p){ var k = photoKey(p); if (k) bk[k] = 1; });
+    ap.forEach(function(p){ var k = photoKey(p); if (k) ak[k] = 1; });
+    ap.forEach(function(p){
+      var k = photoKey(p);
+      if (k && !bk[k]){ (ch.photosAdded = ch.photosAdded || []).push({ key: k, photo: clone(p) }); bk[k] = 1; any = true; }
+    });
+    Object.keys(bk).forEach(function(k){
+      if (!ak[k] && bp.some(function(p){ return photoKey(p) === k; })){ (ch.photosRemoved = ch.photosRemoved || []).push(k); any = true; }
+    });
+    return any ? ch : null;
+  }
+  // meta: { app, by, level, room, joineryId, fileBase }. Resolves nothing --
+  // returns { name, ev } for writeEvent, or null when nothing changed.
+  function makeChange(before, after, meta){
+    var ch = diff(before, after);
+    if (!ch) return null;
+    meta = meta || {};
+    var d = new Date();
+    var ev = { kind: "change", app: meta.app || "", by: meta.by || "", at: d.toISOString(),
+      level: meta.level || "", room: meta.room || "", joineryId: meta.joineryId || "", fileBase: meta.fileBase || "" };
+    Object.keys(ch).forEach(function(k){ ev[k] = ch[k]; });
+    return { name: userSlug(meta.by) + " - " + stamp(d) + " - change.json", ev: ev };
+  }
+  // After the event file has landed: the base about to be written records
+  // it as seen and as the latest writer of every part it changed.
+  function markWritten(data, change){
+    var log = logOf(data);
+    var ev = change.ev;
+    var sk = String(ev.at || "") + "|" + change.name;
+    Object.keys(ev.rows || {}).forEach(function(i){ log.at["r" + i] = sk; });
+    Object.keys(ev.signoff || {}).forEach(function(role){ log.at["s:" + role] = sk; });
+    Object.keys(ev.fields || {}).forEach(function(k){ log.at["f:" + k] = sk; });
+    (ev.removed || []).forEach(function(k){ log.at["f:" + k] = sk; });
+    (ev.photosRemoved || []).forEach(function(k){ if (log.gone.indexOf(k) < 0) log.gone.push(k); });
+    if (log.seen.indexOf(change.name) < 0) log.seen.push(change.name);
+    return data;
+  }
+
+  /* ------------------------------ fold ------------------------------ */
+  // Applies events (each with ._file) onto data, in place. Events already
+  // seen are skipped; a part is only taken if the event is newer than the
+  // one that last set it.
+  function applyEvents(data, events){
+    var log = logOf(data);
+    var seen = {}, gone = {};
+    log.seen.forEach(function(n){ seen[n] = 1; });
+    log.gone.forEach(function(k){ gone[k] = 1; });
+    if (!Array.isArray(data.rows)) data.rows = [];
+    if (!data.signoff || typeof data.signoff !== "object") data.signoff = {};
+    if (!Array.isArray(data.photos)) data.photos = [];
+    var list = (events || []).filter(function(ev){ return ev && typeof ev === "object" && ev.kind === "change" && !(ev._file && seen[ev._file]); });
+    list.sort(function(a, b){ var x = stampOf(a), y = stampOf(b); return x < y ? -1 : x > y ? 1 : 0; });
+    var applied = 0;
+    list.forEach(function(ev){
+      var sk = stampOf(ev);
+      function take(part){ var cur = log.at[part]; if (cur && cur >= sk) return false; log.at[part] = sk; return true; }
+      var rows = (ev.rows && typeof ev.rows === "object") ? ev.rows : {};
+      Object.keys(rows).forEach(function(k){
+        var i = parseInt(k, 10);
+        if (!(i >= 0) || i > 999) return;
+        if (take("r" + i)) data.rows[i] = clone(rows[k]);
+      });
+      var so = (ev.signoff && typeof ev.signoff === "object") ? ev.signoff : {};
+      Object.keys(so).forEach(function(role){ if (take("s:" + role)) data.signoff[role] = clone(so[role]); });
+      var f = (ev.fields && typeof ev.fields === "object") ? ev.fields : {};
+      Object.keys(f).forEach(function(k){ if (!SKIP[k] && take("f:" + k)) data[k] = clone(f[k]); });
+      (Array.isArray(ev.removed) ? ev.removed : []).forEach(function(k){ if (!SKIP[k] && take("f:" + k)) delete data[k]; });
+      (Array.isArray(ev.photosRemoved) ? ev.photosRemoved : []).forEach(function(k){
+        if (!k) return;
+        gone[k] = 1;
+        data.photos = data.photos.filter(function(p){ return photoKey(p) !== k; });
+      });
+      (Array.isArray(ev.photosAdded) ? ev.photosAdded : []).forEach(function(a){
+        if (!a || !a.photo) return;
+        var k = a.key || photoKey(a.photo);
+        if (!k || gone[k]) return;
+        if (data.photos.some(function(p){ return photoKey(p) === k; })) return;
+        data.photos.push(clone(a.photo));
+      });
+      if (ev._file){ seen[ev._file] = 1; log.seen.push(ev._file); }
+      applied++;
+    });
+    log.gone = Object.keys(gone);
+    return applied;
+  }
+
+  /* ------------------------------ files ------------------------------ */
+  function listEventNames(dirH){
+    var out = [];
+    if (!dirH || typeof dirH.values !== "function") return Promise.resolve(out);
+    var iter = dirH.values();
+    function step(){
+      return iter.next().then(function(res){
+        if (res.done) return out;
+        var e = res.value;
+        if (e && e.kind === "file" && /\.json$/i.test(e.name)) out.push(e.name);
+        return step();
+      });
+    }
+    return step();
+  }
+  // Reads the named event files, two at a time. A file that's empty or
+  // half-synced is left out (and NOT marked seen, so the next read tries it
+  // again); .skipped counts them. slim: drop the added photos' pixels (the
+  // schedules only count photos -- 4 GB tablets).
+  function readEvents(dirH, names, slim){
+    var out = [];
+    out.skipped = 0;
+    var i = 0;
+    function lane(){
+      if (i >= names.length) return Promise.resolve();
+      var name = names[i++];
+      return dirH.getFileHandle(name, { create: false }).then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); }).then(function(text){
+        var ev = null;
+        try{ ev = JSON.parse(text); }catch(e){ ev = null; }
+        if (!ev || typeof ev !== "object" || Array.isArray(ev)){ out.skipped++; return; }
+        ev._file = name;
+        if (slim && Array.isArray(ev.photosAdded)){
+          ev.photosAdded = ev.photosAdded.map(function(a){
+            if (!a || !a.photo) return a;
+            var p = {};
+            Object.keys(a.photo).forEach(function(k){ if (k !== "dataUrl") p[k] = a.photo[k]; });
+            return { key: a.key || photoKey(a.photo), photo: p };
+          });
+        }
+        out.push(ev);
+      }, function(){ out.skipped++; }).then(lane);
+    }
+    return Promise.all([lane(), lane()]).then(function(){ return out; });
+  }
+  // Writes one event file (a new name -- never an overwrite), checking the
+  // size landed; retried at 0.5 s and 1.5 s.
+  function writeEvent(dirH, name, ev){
+    var text = JSON.stringify(ev);
+    var expected = new Blob([text]).size;
+    var tries = 0;
+    function attempt(){
+      return dirH.getFileHandle(name, { create: true }).then(function(fh){
+        return fh.createWritable().then(function(w){
+          return w.write(text).then(function(){ return w.close(); });
+        }).then(function(){ return fh.getFile(); }).then(function(f){
+          if (f && typeof f.size === "number" && f.size !== expected){ var e = new Error("The change file didn't land (" + f.size + " of " + expected + " bytes)"); e.code = "size_mismatch"; throw e; }
+          return fh;
+        });
+      });
+    }
+    function go(){
+      return attempt().catch(function(err){
+        if (tries >= WRITE_RETRY_MS.length) throw err;
+        var ms = WRITE_RETRY_MS[tries++];
+        console.warn("Saving " + name + " failed (" + ((err && (err.name || err.message)) || err) + ") — trying again in " + ms + " ms");
+        return wait(ms).then(go);
+      });
+    }
+    return go();
+  }
+
+  /* ------------------------------ read one checklist ------------------------------ */
+  // o: {
+  //   readBase(): Promise<text> -- rejects NotFound (or resolves null) when there's no file
+  //   logDir():   Promise<dirH> -- the item's log folder (never created here)
+  //   valid(d):   is a parsed base usable? (default: any object)
+  //   blank():    what to start from when the base is missing / unusable (default: nothing)
+  //   slim:       true for read-only summaries
+  // }
+  // Resolves { data (null = no checklist at all), applied, skipped, baseState }.
+  // baseState: "ok" | "missing" | "empty" | "unreadable". A base that has
+  // text but isn't JSON (half-synced) is read again at 0.6 s and 1.5 s.
+  function load(o){
+    var tries = 0;
+    function readBase(){
+      return Promise.resolve().then(function(){ return o.readBase(); }).then(function(text){
+        if (text == null) return { state: "missing", data: null };
+        if (!String(text).trim()) return { state: "empty", data: null };
+        var d = null;
+        try{ d = JSON.parse(text); }catch(e){ d = null; }
+        if (d && typeof d === "object" && !Array.isArray(d)) return { state: "ok", data: d };
+        if (tries < READ_RETRY_MS.length) return wait(READ_RETRY_MS[tries++]).then(readBase);
+        return { state: "unreadable", data: null };
+      }, function(err){
+        if (isNotFound(err)) return { state: "missing", data: null };
+        throw err;
+      });
+    }
+    return readBase().then(function(b){
+      var data = b.data;
+      if (data && o.valid && !o.valid(data)) data = null;
+      var usable = !!data;
+      return Promise.resolve().then(function(){ return o.logDir(); }).then(function(dirH){
+        return listEventNames(dirH).then(function(names){
+          var seen = {};
+          if (usable) logOf(data).seen.forEach(function(n){ seen[n] = 1; });
+          var unseen = names.filter(function(n){ return !seen[n]; });
+          return unseen.length ? readEvents(dirH, unseen, !!o.slim) : Object.assign([], { skipped: 0 });
+        });
+      }).catch(function(err){
+        // No log folder yet is the normal case. Any other problem reading it:
+        // show the base as it is -- the events stay unseen and are picked
+        // up by the next read that can get at them.
+        var none = []; none.skipped = 0;
+        if (!isNotFound(err)){ none.logError = true; console.warn("Reading the checklist's change files failed:", err); }
+        return none;
+      }).then(function(events){
+        if (!usable){
+          data = o.blank ? o.blank() : null;
+          if (data && data._log) delete data._log;
+          if (!data && events.some(function(ev){ return ev && ev.kind === "change"; })) data = { rows: [], signoff: {}, photos: [] };
+        }
+        var applied = data ? applyEvents(data, events) : 0;
+        return { data: data, applied: applied, skipped: events.skipped || 0, logError: !!events.logError, baseState: b.state === "ok" && !usable ? "unusable" : b.state };
+      });
+    });
+  }
+
+  global.UtzItpLog = {
+    clone: clone, photoKey: photoKey, diff: diff, makeChange: makeChange, markWritten: markWritten,
+    applyEvents: applyEvents, listEventNames: listEventNames, readEvents: readEvents, writeEvent: writeEvent,
+    load: load, userSlug: userSlug, stamp: stamp
+  };
+})(window);
+</script>
+<!-- UTZLINE-ITP-LOG END -->
 </head>
 <body>
 
@@ -2764,6 +3103,42 @@ body.plan-fullscreen .plan-viewport{
   ];
 
   /* ============================== small generic helpers ============================== */
+  /* (v25) Every save: written, read back to check its size, and the whole
+     write tried again on ANY failure (0.5 s, then 1.5 s later). On Windows
+     a sync client or antivirus can hold a brand-new file for a moment, and
+     a save then fails as it finishes -- which used to leave a 0-byte file
+     behind with nothing said (UTZLINE Projects v43 found this). */
+  var SAVE_RETRY_MS = [500, 1500];
+  var saveChains = {}; // (v26) see the end of saveToHandle
+  function saveToHandle(fh, data){
+    var expected = (typeof data === "string") ? new Blob([data]).size : (data && typeof data.size === "number" ? data.size : (data && data.byteLength) || 0);
+    function attempt(){
+      return fh.createWritable().then(function(w){
+        return w.write(data).then(function(){ return w.close(); });
+      }).then(function(){ return fh.getFile(); }).then(function(f){
+        if (f && typeof f.size === "number" && f.size !== expected){ var e = new Error("The save didn't land (" + f.size + " of " + expected + " bytes)"); e.code = "size_mismatch"; throw e; }
+        return fh;
+      });
+    }
+    var tries = 0;
+    function go(){
+      return attempt().catch(function(err){
+        if (tries >= SAVE_RETRY_MS.length) throw err;
+        var wait = SAVE_RETRY_MS[tries++];
+        console.warn("Saving " + (fh && fh.name) + " failed (" + ((err && (err.name || err.message)) || err) + ") — trying again in " + wait + " ms");
+        return new Promise(function(r){ setTimeout(r, wait); }).then(go);
+      });
+    }
+    // (v26) Two saves of the SAME file name at once are done one after the
+    // other, in the order asked (at the same time, each one's size check
+    // could see the other's bytes and they re-wrote each other).
+    var chainKey = (fh && fh.name) || "";
+    var run = (saveChains[chainKey] || Promise.resolve()).catch(function(){}).then(go);
+    saveChains[chainKey] = run;
+    function done(){ if (saveChains[chainKey] === run) delete saveChains[chainKey]; }
+    run.then(done, done);
+    return run;
+  }
   function sanitizeFileBase(name){
     var cleaned = String(name || "")
       .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
@@ -3139,7 +3514,10 @@ body.plan-fullscreen .plan-viewport{
     if (rec.status === "manufactured") return "📦";
     if (rec.status === "machined") return "⚙️";
     if (rec.status === "in_manufacture") return "🏭";
-    if (rec.jobNote) return "🛠️";
+    // A job note means In manufacture (the rule since 2026-09-23) -- and
+    // Andrew: "i want the factory throguhout" (an item whose In manufacture
+    // step hadn't landed showed 🛠️ instead).
+    if (rec.jobNote) return "🏭";
     if (rec.status === "measured") return "📏";
     return "";
   }
@@ -3265,10 +3643,7 @@ body.plan-fullscreen .plan-viewport{
             var stamp = statusEventStampFromIso(h.at);
             writes.push(getJoineryStatusItemDir(projectHandle, key, true).then(function(dirH){
               return dirH.getFileHandle(statusEventFileName(h.by, stamp, "status"), { create: true });
-            }).then(function(fh){
-              return fh.createWritable();
-            }).then(function(w){
-              return w.write(JSON.stringify(payload)).then(function(){ return w.close(); });
+            }).then(function(fh){ return saveToHandle(fh, JSON.stringify(payload)); /* (v25) retried + checked */
             }).catch(function(){}));
           });
           if (rec.jobNote){
@@ -3278,10 +3653,7 @@ body.plan-fullscreen .plan-viewport{
             var jnStamp = statusEventStampFromIso(jnAt);
             writes.push(getJoineryStatusItemDir(projectHandle, key, true).then(function(dirH){
               return dirH.getFileHandle(statusEventFileName(jnBy, jnStamp, "jobnote"), { create: true });
-            }).then(function(fh){
-              return fh.createWritable();
-            }).then(function(w){
-              return w.write(JSON.stringify(jnPayload)).then(function(){ return w.close(); });
+            }).then(function(fh){ return saveToHandle(fh, JSON.stringify(jnPayload)); /* (v25) retried + checked */
             }).catch(function(){}));
           }
         });
@@ -3344,10 +3716,7 @@ body.plan-fullscreen .plan-viewport{
       var payload = { kind: "status", level: level, room: room || "", joineryId: joineryId || "", status: newStatus, by: updatedBy || "", at: atIso };
       return getJoineryStatusItemDir(projectHandle, key, true).then(function(dirH){
         return dirH.getFileHandle(statusEventFileName(updatedBy, stamp, "status"), { create: true });
-      }).then(function(fh){
-        return fh.createWritable();
-      }).then(function(w){
-        return w.write(JSON.stringify(payload)).then(function(){ return w.close(); });
+      }).then(function(fh){ return saveToHandle(fh, JSON.stringify(payload)); /* (v25) retried + checked */
       }).then(function(){
         if (projectHandle === state.projectHandle){
           var newRec = foldJoineryStatusEvents((events || []).concat([payload]));
@@ -3535,14 +3904,14 @@ body.plan-fullscreen .plan-viewport{
     // though nothing had been saved. Now, per the family's "unreadable is
     // not empty" rule: NotFound (folder/file/order gone) = write nothing,
     // say so; any other read/parse failure = retry once after 600 ms, then
-    // "couldn't read (still syncing?) -- nothing was changed", write
+    // "couldn't read just now -- nothing was changed", write
     // nothing. Writes back through the SAME handle it just read -- never
     // creates the folder or file. Rejections carry .userMessage for the
     // caller's toast (and the caller undoes the tick).
     var fileName = subOrdersFileNameFor(levelName, roomName, joineryCode);
     function soErr(kind, msg){ var e = new Error(msg); e.soKind = kind; e.userMessage = msg; return e; }
     var GONE_MSG = "That order isn't attached to this item any more — nothing was changed.";
-    var UNREADABLE_MSG = "Couldn't read this item's sub orders (still syncing?) — nothing was changed. Try again in a moment.";
+    var UNREADABLE_MSG = "Couldn't read this item's sub orders just now — nothing was changed. Try again in a moment.";
     if (projectHandle === state.projectHandle) state.subOrdersRootMissing = false; // must see the real folder, not the per-session shortcut
     function readOnce(){
       return getSubOrdersOrdersDir(projectHandle, false).then(function(dirH){
@@ -3573,9 +3942,7 @@ body.plan-fullscreen .plan-viewport{
         return updated;
       });
       if (!updated) throw soErr("gone", GONE_MSG);
-      return res.fh.createWritable().then(function(w){
-        return w.write(JSON.stringify(next, null, 2)).then(function(){ return w.close(); });
-      }).then(function(){ return updated; });
+      return saveToHandle(res.fh, JSON.stringify(next, null, 2)) /* (v25) retried + checked */.then(function(){ return updated; });
     });
   }
 
@@ -4076,9 +4443,7 @@ body.plan-fullscreen .plan-viewport{
     var lines = [USERS_CSV_HEADER];
     rows.forEach(function(r){ lines.push([r.name, r.pin, r.showInApps]); });
     var text = csvStringifyRows(lines);
-    return state.rootHandle.getFileHandle(USERS_CSV_NAME, { create: true }).then(function(fh){
-      return fh.createWritable();
-    }).then(function(w){ return w.write(text).then(function(){ return w.close(); }); }).then(function(){
+    return state.rootHandle.getFileHandle(USERS_CSV_NAME, { create: true }).then(function(fh){ return saveToHandle(fh, text); /* (v25) retried + checked */ }).then(function(){
       cachedUsersRows = null; // (2026-09-26) invalidate -- see getUsersRowsCached
     });
   }
@@ -5168,15 +5533,19 @@ body.plan-fullscreen .plan-viewport{
   // creates a folder/file, never throws. Same name/shape as Install ITP's
   // read-only reader of this very data, so the ported "Go to pin" plumbing
   // (goToPinFor / focusPlanOn) reads identically in both apps.
-  function readDeliveryLocationPin(levelName, roomName, joineryCode){
+  // (v26) quick: the whole file only; otherwise with its change files too.
+  function readDeliveryLocationPin(levelName, roomName, joineryCode, quick){
     if (!joineryCode) return Promise.resolve(null);
-    return getChecklistFileHandleFor(levelName, roomName, joineryCode, false)
-      .then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); }).then(function(text){
-        var data = null;
-        try{ data = JSON.parse(text); }catch(e){ data = null; }
-        var pin = data && data.deliveryLocationPin;
-        return (pin && typeof pin.x === "number" && typeof pin.y === "number") ? { x: pin.x, y: pin.y } : null;
-      }).catch(function(){ return null; });
+    var fileName = itpChecklistFileNameFor(levelName, roomName, joineryCode, state.projectIsFlat);
+    return UtzItpLog.load({
+      readBase: function(){ return getChecklistFileHandleFor(levelName, roomName, joineryCode, false).then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); }); },
+      logDir: function(){ return quick ? Promise.resolve(null) : itpLogDirFor(itpAppBranchName(), state.projectIsFlat ? null : projectDir([itpFolderName(), levelName, roomName], false), fileName, false); },
+      slim: true
+    }).then(function(res){
+      var data = res.data;
+      var pin = data && data.deliveryLocationPin;
+      return (pin && typeof pin.x === "number" && typeof pin.y === "number") ? { x: pin.x, y: pin.y } : null;
+    }).catch(function(){ return null; });
   }
   // Bold, amber, circular -- deliberately NOT buildPlanMarkerEl's own
   // white-halo/status-circle/code-label joinery-marker look, so a draft (or
@@ -5357,20 +5726,35 @@ body.plan-fullscreen .plan-viewport{
           });
         });
       }
+      // (v26) The pin is its own change file too (so a tablet that saves this
+      // item's whole file at the same time can't lose it), and the whole file
+      // is written from the item as read with everyone's change files.
+      var pinFileName = itpChecklistFileNameFor(ctx.levelName, ctx.roomName, ctx.joineryId, state.projectIsFlat);
+      var roomP = state.projectIsFlat ? null : projectDir([itpFolderName(), ctx.levelName, ctx.roomName], true);
       return getChecklistFileHandleFor(ctx.levelName, ctx.roomName, ctx.joineryId, true).then(function(fh){
-        return fh.getFile().then(function(f){ return f.text(); }).then(function(text){
-          var data = null;
-          try{ data = JSON.parse(text); }catch(e){ data = null; }
-          if (!data || !Array.isArray(data.rows) || data.rows.length !== CHECK_ITEMS.length){
+        return UtzItpLog.load({
+          readBase: function(){ return fh.getFile().then(function(f){ return f.text(); }); },
+          logDir: function(){ return itpLogDirFor(itpAppBranchName(), roomP, pinFileName, false); },
+          valid: isUsableChecklist,
+          blank: function(){ return blankChecklist(ctx.joineryId); }
+        }).then(function(res){
+          var data = res.data;
+          if (!isUsableChecklist(data)){
             data = blankChecklist(ctx.joineryId);
           }
           if (!Array.isArray(data.photos)) data.photos = [];
+          var before = UtzItpLog.clone(data);
           data.deliveryLocationPin = { x: ctx.draftPin.x, y: ctx.draftPin.y };
           data.locationSnapshot = { dataUrl: snapResult.dataUrl, w: snapResult.w, h: snapResult.h, capturedAt: new Date().toISOString(), capturedBy: deviceUserName || "" };
           data.updatedAt = new Date().toISOString();
           data.lastEditedBy = deviceUserName || "";
-          var payload = JSON.stringify(data);
-          return fh.createWritable().then(function(w){ return w.write(payload).then(function(){ return w.close(); }); });
+          var change = UtzItpLog.makeChange(before, data, { app: itpAppBranchName(), by: deviceUserName || "", level: ctx.levelName, room: ctx.roomName, joineryId: ctx.joineryId, fileBase: pinFileName.replace(/\.json$/i, "") });
+          var evP = !change ? Promise.resolve() : itpLogDirFor(itpAppBranchName(), roomP, pinFileName, true).then(function(dirH){
+            return UtzItpLog.writeEvent(dirH, change.name, change.ev);
+          }).then(function(){ UtzItpLog.markWritten(data, change); });
+          return evP.then(function(){
+            return saveToHandle(fh, JSON.stringify(data)) /* retried + checked */;
+          });
         });
       });
     }).then(function(){
@@ -6080,8 +6464,7 @@ body.plan-fullscreen .plan-viewport{
         Object.keys(entries).forEach(function(k){ index[k] = entries[k]; });
         return getItemIndexRootDir(true).then(function(dirH){
           return dirH.getFileHandle(badgeIndexFileNameForLevel(levelName), { create: true });
-        }).then(function(fh){ return fh.createWritable(); })
-          .then(function(w){ return w.write(JSON.stringify(index)).then(function(){ return w.close(); }); });
+        }).then(function(fh){ return saveToHandle(fh, JSON.stringify(index)); /* (v25) retried + checked */ });
       }).catch(function(err){
         console.error("Updating badge cache failed (harmless -- badges will just be re-read next time):", err);
       });
@@ -6688,8 +7071,7 @@ body.plan-fullscreen .plan-viewport{
         Object.keys(entries).forEach(function(k){ index[k] = entries[k]; });
         return getItemIndexRootDir(true).then(function(dirH){
           return dirH.getFileHandle(itemIndexFileNameForLevel(levelName), { create: true });
-        }).then(function(fh){ return fh.createWritable(); })
-          .then(function(w){ return w.write(JSON.stringify(index)).then(function(){ return w.close(); }); });
+        }).then(function(fh){ return saveToHandle(fh, JSON.stringify(index)); /* (v25) retried + checked */ });
       }).catch(function(err){
         // Never lets a cache-write problem affect the real save/open it rode
         // in on -- worst case here is just that the NEXT list open re-reads
@@ -6994,6 +7376,7 @@ body.plan-fullscreen .plan-viewport{
         return openItem(fileName, joineryNo);
       }, function(){
         var blank = blankChecklist(joineryNo);
+        itpBaseline = null; // (v26) a new file -- its first save is the whole file only
         return writeChecklistFile(fileName, blank).then(function(){
           return populateItemList();
         }).then(function(){
@@ -7063,15 +7446,67 @@ body.plan-fullscreen .plan-viewport{
       lastEditedBy: ""
     };
   }
+  /* ---- (v26) the change log -- Andrew: "shouldnt everything run like this.
+     isnt that the ultimate failsafe". Every save still rewrites this item's
+     whole checklist file, and ALSO writes one small change file of its own
+     that's never rewritten (see the UTZLINE-ITP-LOG block in the page head):
+       flat:   Project Saves/UTZLINE ITP/Delivery ITP Log/<Level> - <Room> - <Code>/
+       legacy: <this room's folder>/<Code> log/
+     Two tablets saving the same item offline both keep their changes: an
+     open reads the whole file plus any change files it hasn't seen.
+     itpBaseline is the item as it was opened (or last saved) here -- a save
+     writes only what differs from it. ---- */
+  var itpBaseline = null; // { key, data }
+  function itpLogKey(fileName){ return [state.projectName || "", state.levelName || "", state.roomName || "", fileName].join("\u0000"); }
+  // branch: whose log ("Install ITP", "Delivery ITP" ...). legacyRoomP: that
+  // app's room folder (legacy projects only).
+  // A project with no "<App> Log" folder yet (nothing saved by this version
+  // anywhere) isn't asked again for 30 s -- one lookup less per open on slow
+  // Android storage. Creating it here clears that at once.
+  var itpLogMissing = {};
+  function itpLogDirFor(branch, legacyRoomP, fileName, create){
+    var base = String(fileName).replace(/\.json$/i, "");
+    if (state.projectIsFlat){
+      var mkey = (state.projectName || "") + "\u0000" + branch;
+      if (!create && itpLogMissing[mkey] && Date.now() - itpLogMissing[mkey] < 30000){
+        return Promise.reject(Object.assign(new Error("no change files yet"), { name: "NotFoundError" }));
+      }
+      return getCachedDir(state.projectHandle, "project", ["Project Saves", "UTZLINE ITP", branch + " Log"], create).then(function(h){
+        delete itpLogMissing[mkey];
+        return h.getDirectoryHandle(base, { create: !!create });
+      }, function(err){
+        if (!create && err && err.name === "NotFoundError") itpLogMissing[mkey] = Date.now();
+        throw err;
+      });
+    }
+    return Promise.resolve(legacyRoomP).then(function(roomH){
+      if (!roomH) throw Object.assign(new Error("no room folder"), { name: "NotFoundError" });
+      return roomH.getDirectoryHandle(base + " log", { create: !!create });
+    });
+  }
+  function isUsableChecklist(d){ return !!(d && Array.isArray(d.rows) && d.rows.length === CHECK_ITEMS.length); }
   function writeChecklistFile(fileName, data){
     data.updatedAt = new Date().toISOString();
     data.lastEditedBy = deviceUserName || "";
-    var payload = JSON.stringify(data);
-    return state.itpRoomHandle.getFileHandle(fileName, { create: true }).then(function(fh){
-      return fh.createWritable();
-    }).then(function(w){
-      return w.write(payload).then(function(){ return w.close(); });
+    var roomH = state.itpRoomHandle;
+    var bl = (itpBaseline && itpBaseline.key === itpLogKey(fileName)) ? itpBaseline : null;
+    var change = bl ? UtzItpLog.makeChange(bl.data, data, { app: itpAppBranchName(), by: deviceUserName || "", level: state.levelName || "", room: state.roomName || "", joineryId: data.joineryNo || "", fileBase: fileName.replace(/\.json$/i, "") }) : null;
+    var snapshot = bl ? UtzItpLog.clone(data) : null; // what this save covers (a tap while it's saving goes in the next one)
+    var eventOk = true;
+    var evP = !change ? Promise.resolve() : itpLogDirFor(itpAppBranchName(), roomH, fileName, true).then(function(dirH){
+      return UtzItpLog.writeEvent(dirH, change.name, change.ev);
     }).then(function(){
+      UtzItpLog.markWritten(data, change);
+    }, function(err){
+      eventOk = false; // the whole file still saves below; this change goes in the next save's change file
+      console.error("Saving the change file failed:", err);
+    });
+    return evP.then(function(){
+      var payload = JSON.stringify(data);
+      return roomH.getFileHandle(fileName, { create: true }).then(function(fh){ return saveToHandle(fh, payload); /* retried + checked */ });
+    }).then(function(){
+      if (bl && eventOk && itpBaseline === bl) bl.data = snapshot;
+      if (!eventOk) showToast("Saved — but its change file didn't save. It'll go with the next save.");
       // Keep this level's item-status index in sync on every real save --
       // see that cache's own comment above for why the Items list needs
       // this instead of re-reading every full checklist file. Never allowed
@@ -7341,10 +7776,7 @@ body.plan-fullscreen .plan-viewport{
     if (!reworkState.dirHandle || !reworkState.data) return Promise.resolve();
     reworkState.data.updatedAt = new Date().toISOString();
     var payload = JSON.stringify(reworkState.data);
-    return reworkState.dirHandle.getFileHandle(reworkFileNameFor(reworkState.joineryCode), { create: true }).then(function(fh){
-      return fh.createWritable();
-    }).then(function(w){
-      return w.write(payload).then(function(){ return w.close(); });
+    return reworkState.dirHandle.getFileHandle(reworkFileNameFor(reworkState.joineryCode), { create: true }).then(function(fh){ return saveToHandle(fh, payload); /* (v25) retried + checked */
       // (event-files round) No more regenerating one fixed-name PDF for the
       // whole item on every change -- two devices doing that at once was the
       // OneDrive conflict. Each rework gets its own name+time-stamped PDF
@@ -7699,7 +8131,7 @@ body.plan-fullscreen .plan-viewport{
     if (reworkState.logUnreadable){
       var warn = document.createElement("p");
       warn.className = "rework-empty";
-      warn.textContent = "Part of this item's rework log couldn't be read just now (still syncing?) — states may be a step behind. Go back and open it again in a moment.";
+      warn.textContent = "Part of this item's rework log couldn't be read just now — states may be a step behind. Go back and open it again in a moment.";
       reworkListEl.appendChild(warn);
     }
     // outstanding first, delivered/closed last (Andrew: "reworks that are
@@ -8819,6 +9251,10 @@ body.plan-fullscreen .plan-viewport{
       }
     }).catch(function(err){
       console.error("Autosave failed:", err);
+      // (v26) Say so -- a save that didn't land used to go unnoticed, and
+      // Save & exit carried on as if it had. Resolves false.
+      showToast("Couldn't save " + (savedJoinery || "the checklist") + " — try Save & exit again.");
+      return false;
     });
   }
 
@@ -8902,13 +9338,18 @@ body.plan-fullscreen .plan-viewport{
       return state.itpRoomHandle.getFileHandle(fileName, { create: true });
     }).then(function(fh){
       state.currentFileHandle = fh;
-      return fh.getFile();
-    }).then(function(file){
-      return file.text();
-    }).then(function(text){
-      var data = null;
-      try{ data = JSON.parse(text); }catch(e){ data = null; }
-      if (!data || !Array.isArray(data.rows) || data.rows.length !== CHECK_ITEMS.length){
+      // (v26) the whole file plus any change files it hasn't seen (another
+      // tablet's save that lost the whole-file race comes back here).
+      var roomH = state.itpRoomHandle;
+      return UtzItpLog.load({
+        readBase: function(){ return fh.getFile().then(function(file){ return file.text(); }); },
+        logDir: function(){ return itpLogDirFor(itpAppBranchName(), roomH, fileName, false); },
+        valid: isUsableChecklist,
+        blank: function(){ return blankChecklist(joineryNo); }
+      });
+    }).then(function(res){
+      var data = res.data;
+      if (!isUsableChecklist(data)){
         data = blankChecklist(joineryNo);
       }
       // A checklist saved before 2026-09-22 has no photos array at all --
@@ -8923,6 +9364,7 @@ body.plan-fullscreen .plan-viewport{
       // yet".
       if (data.deliveryLocationPin === undefined) data.deliveryLocationPin = null;
       state.currentData = data;
+      itpBaseline = { key: itpLogKey(fileName), data: UtzItpLog.clone(data) }; // (v26) what a save compares against
       state.currentJoineryNo = data.joineryNo || joineryNo;
       // See flushPendingSave's own 2026-09-25 comment: initializes the
       // "was this item already signed off" flag from its own on-disk
@@ -9113,7 +9555,8 @@ body.plan-fullscreen .plan-viewport{
     var wasSignedOff = state.wasSignedOffLastSave;
     dirty = true;
     var endTimer = perfStart("save & exit: saved");
-    flushPendingSave().then(function(){
+    flushPendingSave().then(function(ok){
+      if (ok === false){ endTimer("failed"); return null; } // (v26) didn't save -- stay on the checklist
       endTimer();
       var data = state.currentData;
       var joineryCode = state.currentJoineryNo;
@@ -9555,10 +9998,7 @@ body.plan-fullscreen .plan-viewport{
     // Legacy: same folder as the checklist JSON (itpPdfHandle === itpRoomHandle,
     // see ensureItpRoomFolder). Flat: its own PDF Files/UTZLINE ITP/Delivery ITP/
     // folder, per Andrew's own approved Release 3 folder diagram.
-    return state.itpPdfHandle.getFileHandle(fileName, { create: true }).then(function(fh){
-      return fh.createWritable();
-    }).then(function(w){
-      return w.write(blob).then(function(){ return w.close(); });
+    return state.itpPdfHandle.getFileHandle(fileName, { create: true }).then(function(fh){ return saveToHandle(fh, blob); /* (v25) retried + checked */
     }).then(function(){
       showToast("Exported “" + fileName + "”.");
     });
