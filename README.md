@@ -1,11 +1,27 @@
 # UTZLINE Delivery ITP — installable app
 
-**Current version: v28 (RC 1.0)** (its own independent version line, separate from
+**Current version: v31 (RC 1.0)** (its own independent version line, separate from
 Site Measure/Viewer's, Install ITP's, and Manufacture ITP's — bump this
 line every time a new build ships. This line has drifted behind the actual
 shipped cache version twice before today — see the v4 and "v2" entries
 below for what each catch-up covers; `next-version-notes.md` in the project
 is the authoritative record for anything not detailed here.)
+
+**v31 (2026-10-01) — RC 1.0: Scan QR code — the QR on the Viewer's exported floor plan opens the room / joinery item here.**
+
+- Andrew: *"can that viewer export also generate and apply a qr code on the page, that the delivery itp can scan to open the relevant room / joinery item"* → *"All three ITPs"*. A **📷 Scan QR code** button on the Projects and Levels screens opens the camera; the QR printed on the Viewer's A3 floor plan export opens that item's checklist straight away (the project, level, room and joinery code are in the code). Reads with the browser's own QR detector where it has one (Chrome on Android), otherwise with a small reader kept in the app's folder (`jsqr.min.js`, offline through the service worker). The first scan asks for camera permission.
+- The same code opened by a phone's own camera is a link to the Delivery ITP (`?utz=item&p=…&l=…&r=…&j=…`); any of the three ITPs opened with that link goes to the item once its Projects folder is connected.
+
+**v30 (2026-09-30) — RC 1.0: day / night mode, the room in the marker menu, the builder's logo on the level heading and the checklist PDF.**
+
+- **Day / night mode** (Andrew: *"give me day / night mode for all apps"*): a ☀ / ☾ button at the top right of every screen switches between the dark look and a new light one; with nothing chosen the app follows the device's own setting. The choice is kept per device and shared by the UTZLINE apps on it.
+- The marker's right-click / long-press menu now shows the **room** as well as the joinery ID (Andrew: *"these menus to show the room number also ... across all apps that have these popups on right click"*).
+- **Builder's logo** (set up per builder in UTZLINE Projects) beside the project's level heading and, on every page of the checklist PDF, beside the company logo. The rework PDF carries it and the new "Drafter" line too.
+
+**v29 (2026-09-30) — RC 1.0: sign in on open (tablets and phones), Change folder bottom right.**
+
+- Andrew: *"on next update, when opening the apps, it should as[k] for you to login, currently it just loads to the last user that was logged in, some of these tablets will have multiple users (employees)"*. **On a tablet or phone the app now asks who is using it** -- a full-screen *Who's using this?* list (every name in `utzline-users.csv`, plus *+ Add a new name…*) each time the app is opened, and again when it has been in the background for **10 minutes or more**. Tap your name and enter your 4-digit PIN on the usual numberpad. The name saved on the device is only treated as "the last person" now; if another app on the device signs in as someone else, this one asks again when it comes back to the front. **A PC is unchanged** (it keeps the last user), and the PIN numberpad, the registry and the name stamped on saves are as before.
+- Andrew: *"move the change folder to the bottom right of the page, and smaller"*. The **Change folder** control on the project list is now a small button fixed to the bottom-right corner of the screen (its tooltip keeps the full wording, *Use a different Projects folder*) instead of a full-size button / link in the list.
 
 **v28 (2026-09-30) — RC 1.0: records are kept one folder per level — much faster on a tablet; less loaded at start.**
 

@@ -165,13 +165,17 @@ var ICON_VERSION = "v1";
 // v26 (2026-09-29): RC 1.0 -- every checklist save also writes its own change file; opening reads them back (two tablets saving offline both keep their changes).
 // v27 (2026-09-30): RC 1.0 -- "Get ready for offline" is a quick check on an Android tablet (the sync app already keeps every file here); "Open every file (slow)" still does the full one.
 // v28 (2026-09-30): RC 1.0 -- event layout v2: status / schedule / cut / completion / cutting file / note records are one folder per LEVEL (Project Saves/UTZLINE Events/<branch>/<Level>/); old per-item folders are still read. PDF libraries load on first use.
-var CACHE_NAME = "utzline-delivery-itp-cache-v28";
+// v29 (2026-09-30): RC 1.0 -- sign in on open (tablets / phones), change-folder button.
+// v30 (2026-09-30): RC 1.0 -- day / night mode, the room in the marker menu, the builder's logo on the level heading and the checklist PDF.
+// v31 (2026-10-01): RC 1.0 -- Scan QR code + the item link from the Viewer's floor plan export
+var CACHE_NAME = "utzline-delivery-itp-cache-v31";
 
 var PRECACHE_URLS = [
   "./",
   "./index.html",
   "./manifest.json?v=" + ICON_VERSION,
   "./jspdf.umd.min.js",
+  "./jsqr.min.js",
   "./sans.woff2",
   "./mono.woff2",
   "./icons/icon-192.png?v=" + ICON_VERSION,
