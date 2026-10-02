@@ -88,6 +88,14 @@
   /* ---- UTZLINE day / night toggle (2026-09-30) -- see shared/theme/theme.js ---- */
   .utz-theme-btn{ position: absolute; top: 50%; right: 12px; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border-radius: 999px; border: 1px solid var(--border, rgba(128,128,128,.4)); background: transparent; color: inherit; cursor: pointer; opacity: .85; touch-action: manipulation; z-index: 3; }
   .utz-theme-btn:hover, .utz-theme-btn:focus{ opacity: 1; outline: none; }
+  header:has(.utz-theme-btn){ padding-right: 60px; }
+  /* (2026-10-02) dark mode: a control no app style has touched gets a real dark background AND readable text (zero specificity, so every
+     app's own control styles still win). A native select's open list and its options take the page's light text colour but the browser's
+     default white background otherwise -- "white writing on a pale background, unreadable". */
+  :where(:root:not([data-theme="light"])) :where(select, option, optgroup, textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit])){ background-color: var(--panel2, var(--surface-2, #202020)); color: var(--text, var(--text-primary, #eee)); }
+  :where(:root:not([data-theme="light"])) :where(select, input, textarea){ color-scheme: dark; }
+  :where(:root:not([data-theme="light"])) :where(option:checked, option:hover){ background-color: var(--accent-soft, var(--surface-3, #33415c)); color: var(--text, var(--text-primary, #fff)); }
+  :where(:root:not([data-theme="light"])) :where(select:disabled, input:disabled, textarea:disabled, option:disabled){ color: var(--muted, var(--text-secondary, #9aa)); }
 </style>
 <!-- UTZLINE-THEME END -->
 <head>
@@ -430,6 +438,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
   font:inherit; font-size:14px; text-align:left;
 }
 .list-row:hover{ border-color:var(--accent); }
+.list-row img.utz-row-logo{ height:28px; width:auto; max-width:160px; flex:0 0 auto; margin-left:auto; object-fit:contain; background:#fff; border-radius:4px; padding:2px; } /* (2026-10-01) builder logo, far right of the project row */
 .list-row .row-main{ flex:1; min-width:0; }
 .list-row .row-title{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .list-row .row-sub{ font-size:12px; color:var(--text-secondary); margin-top:2px; }
@@ -2263,6 +2272,8 @@ body.plan-fullscreen .plan-viewport{
       S.locked = !ok;
       S.staleName = ok ? "" : savedName;
       writeSession({ name: ok ? savedName : "", hiddenAt: 0 });
+      if (ok && S.holding) hideGate();                 // already signed in on this visit: no cover after all
+      else if (!ok) drawHold();                        // (no-op when the early cover is already up)
     }
     if (S.locked && (savedName === S.staleName) && savedName !== S.pendingName) return "";
     return savedName;
@@ -2301,6 +2312,11 @@ body.plan-fullscreen .plan-viewport{
       var np = document.getElementById("numberpadBackdrop");
       (np && np.parentNode ? np.parentNode : document.body).appendChild(g);
       S.gate = g;
+    } else if (S.holding){
+      // the early "Opening..." cover becomes the names list: move it next to the app's own dialogs (see above)
+      var np2 = document.getElementById("numberpadBackdrop");
+      if (np2 && np2.parentNode && S.gate.parentNode !== np2.parentNode) np2.parentNode.appendChild(S.gate);
+      S.gate.setAttribute("aria-label", "Sign in"); S.holding = false;
     }
     var g2 = S.gate;
     g2.innerHTML = "";
@@ -2326,7 +2342,26 @@ body.plan-fullscreen .plan-viewport{
   function hideGate(){
     if (S.gate){ S.gate.hidden = true; if (S.gate.parentNode) S.gate.parentNode.removeChild(S.gate); S.gate = null; }
     document.body.classList.remove("utz-signin-on");
-    S.showing = false;
+    S.showing = false; S.holding = false;
+  }
+  /* (2026-10-01) Andrew: "the login splash screen comes up after the app has started, this could cause issues ... it opens the app, then
+     opens the user selector just after, so someone could maybe make changes before logging in." The names list can only be drawn once the
+     app has read utzline-users.csv (an async folder read), so until then the app sat there live. Now a plain "Opening..." cover goes up
+     the moment this module runs (tablets / phones, unless this is a reload of a page that is already signed in) and is swapped for the
+     names list when it arrives -- or dropped when the app is already signed in, there are no names yet, or the names list hasn't arrived in 15 s
+     (so a fault can never lock anyone out of the app). */
+  function drawHold(){
+    if (S.gate || !document.body) return;
+    ensureStyle();
+    var g = document.createElement("div");
+    g.id = "utzSignIn"; g.setAttribute("role", "dialog"); g.setAttribute("aria-modal", "true"); g.setAttribute("aria-label", "Opening");
+    var card = document.createElement("div"); card.className = "usi-card";
+    var h = document.createElement("h1"); h.textContent = "UTZLINE";
+    var p = document.createElement("p"); p.textContent = "Opening…";
+    card.appendChild(h); card.appendChild(p); g.appendChild(card);
+    document.body.appendChild(g);
+    document.body.classList.add("utz-signin-on");
+    S.gate = g; S.holding = true;
   }
   function unlocked(){
     S.locked = false; S.staleName = ""; S.pendingName = "";
@@ -2402,6 +2437,20 @@ body.plan-fullscreen .plan-viewport{
   });
   window.addEventListener("pagehide", onHide);
 
+  // the early cover (see drawHold): tablets / phones only; not for a reload / back-forward of a page that is already signed in
+  (function earlyHold(){
+    if (!isLight()) return;
+    var s0 = readSession();
+    if (sameVisit() && s0 && s0.name) return;
+    if (document.body) drawHold();
+    else {
+      // this module sits in the page head: put the cover up the moment <body> exists (before the page has painted its own content)
+      try { var mo = new MutationObserver(function(){ if (document.body){ mo.disconnect(); drawHold(); } }); mo.observe(document.documentElement, { childList: true }); } catch (e) {}
+      document.addEventListener("DOMContentLoaded", drawHold);
+    }
+    setTimeout(function(){ if (S.holding) hideGate(); }, 15000);
+  })();
+
   window.UtzSignIn = {
     init: function(adapter){ A = adapter || null; if (S.booted && S.locked) check(); },
     boot: boot,
@@ -2432,10 +2481,14 @@ body.plan-fullscreen .plan-viewport{
    Andrew: "can each project when started input the builders logo, this could be saved per builder. when
    we start a project the builder name can be a drop down with option to add new, if adding new it asks
    to drag and drop their logo. this can be used on the project headers" (screens + PDFs).
-   Kept once at the Projects ROOT (beside company-logo.png and utzline-users.csv), never per project:
-     utzline-builders.json                  { schemaVersion: 1, updatedAt, builders: [ { name, logo, addedBy, addedAt } ] }
-     utzline-builder-logo - <slug>.png      the logo (PNG, longest side <= 600 px) -- a root FILE, so no app
-                                            ever lists it as a project and no exclusion list needs changing
+   Kept once in the "logos" folder at the Projects ROOT (2026-10-02: Andrew, "move the company and builders logos
+   into a logos folder"), never per project. Readers look in logos/ FIRST and fall back to the Projects root, so
+   files an older version left at the root keep working; only UTZLINE Projects writes (always into logos/) and it
+   copies the root files across once (UtzBuilders.migrate -- copies, never moves or deletes):
+     logos/company-logo.png
+     logos/utzline-builders.json            { schemaVersion: 1, updatedAt, builders: [ { name, logo, addedBy, addedAt } ] }
+     logos/utzline-builder-logo - <slug>.png  the logo (PNG, longest side <= 600 px)
+   ("logos" is a reserved root folder name in every app, so it is never listed as a project.)
    A project only stores the builder's NAME (project-meta.json "contractor", as before); the logo is looked
    up by name (case-insensitive). Written by UTZLINE Projects only; every app reads.
      UtzBuilders.list(rootH)                      -> Promise<[{name, logo}]>   ([] when the file isn't there)
@@ -2444,7 +2497,12 @@ body.plan-fullscreen .plan-viewport{
      UtzBuilders.logoUrl(rootH, name)             -> Promise<string|null>      (object URL, cached per root)
      UtzBuilders.logoDataUrl(rootH, name, maxPx)  -> Promise<string|null>      (for PDFs)
      UtzBuilders.contractorOf(projectH)           -> Promise<string>           (project-meta.json "contractor", "" if none)
-     UtzBuilders.mount(el, rootH, name)           -> shows the logo in/next to a header element (adds <img class="utz-builder-logo">)
+     UtzBuilders.mount(el, rootH, name)           -> shows the logo in/next to a header element (adds <img class="utz-builder-logo">);
+                                                     an element carrying data-utz-top="screenA,screenB" (the ids of the project screens)
+                                                     puts it at the FAR RIGHT OF THE TOP BAR instead (<img class="utz-top-builder"> in the
+                                                     <header>, shown only while one of those screens is up and the project has a logo)
+     UtzBuilders.logoFileHandle(rootH, name)      -> Promise<FileSystemFileHandle>  (logos/ first, then the root) -- company-logo.png etc.
+     UtzBuilders.migrate(rootH)                   -> Promise<number>           (Projects only: copies root-level logo files into logos/)
      UtzBuilders.forget(rootH)                    -> drops the caches (after a save)
    Plain ES5. */
 (function(){
@@ -2459,8 +2517,18 @@ body.plan-fullscreen .plan-viewport{
     return h.getFileHandle(name, { create: false }).then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); });
   }
   function notFound(err){ return !!(err && (err.name === "NotFoundError" || err.name === "TypeMismatchError")); }
+  var LOGOS = "logos";
+  function logosDir(rootH, create){
+    if (!rootH || typeof rootH.getDirectoryHandle !== "function"){ var e = new Error("no logos folder"); e.name = "NotFoundError"; return Promise.reject(e); }
+    return rootH.getDirectoryHandle(LOGOS, { create: !!create });
+  }
+  // the file `name` as a handle: logos/ first, the Projects root as the fallback (older layouts, test stand-ins)
+  function logoFileHandle(rootH, name){
+    return logosDir(rootH, false).then(function(d){ return d.getFileHandle(name, { create: false }); }).then(null, function(){ return rootH.getFileHandle(name, { create: false }); });
+  }
+  function readLogoText(rootH, name){ return logoFileHandle(rootH, name).then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); }); }
   function readDoc(rootH){
-    return readText(rootH, FILE).then(function(t){
+    return readLogoText(rootH, FILE).then(function(t){
       var d = JSON.parse(t);
       if (!d || typeof d !== "object" || !Array.isArray(d.builders)) throw new Error("utzline-builders.json isn't the expected shape");
       d.builders = d.builders.filter(function(b){ return b && typeof b.name === "string" && b.name.trim(); });
@@ -2502,15 +2570,17 @@ body.plan-fullscreen .plan-viewport{
     name = String(name || "").trim();
     if (!name) return Promise.reject(new Error("The builder needs a name"));
     return readDoc(rootH).then(function(d){
-      var logoName = null;
-      var p = file ? downscale(file, 600).then(function(b){ logoName = PREFIX + slug(name) + ".png"; return writeBlob(rootH, logoName, b); }) : Promise.resolve();
-      return p.then(function(){
-        var found = null;
-        d.builders.forEach(function(b){ if (norm(b.name) === norm(name)) found = b; });
-        if (!found){ found = { name: name, logo: "", addedBy: by || "", addedAt: new Date().toISOString() }; d.builders.push(found); }
-        if (logoName){ found.logo = logoName; found.logoBy = by || ""; found.logoAt = new Date().toISOString(); }
-        d.schemaVersion = 1; d.updatedAt = new Date().toISOString();
-        return writeText(rootH, FILE, JSON.stringify(d, null, 2)).then(function(){ forget(rootH); return { name: found.name, logo: found.logo || "" }; });
+      return logosDir(rootH, true).then(function(dir){
+        var logoName = null;
+        var p = file ? downscale(file, 600).then(function(b){ logoName = PREFIX + slug(name) + ".png"; return writeBlob(dir, logoName, b); }) : Promise.resolve();
+        return p.then(function(){
+          var found = null;
+          d.builders.forEach(function(b){ if (norm(b.name) === norm(name)) found = b; });
+          if (!found){ found = { name: name, logo: "", addedBy: by || "", addedAt: new Date().toISOString() }; d.builders.push(found); }
+          if (logoName){ found.logo = logoName; found.logoBy = by || ""; found.logoAt = new Date().toISOString(); }
+          d.schemaVersion = 1; d.updatedAt = new Date().toISOString();
+          return writeText(dir, FILE, JSON.stringify(d, null, 2)).then(function(){ forget(rootH); return { name: found.name, logo: found.logo || "" }; });
+        });
       });
     });
   }
@@ -2525,7 +2595,7 @@ body.plan-fullscreen .plan-viewport{
     if (!cache[k]) cache[k] = { list: null, urls: {} };
     if (!cache[k].urls[n]) cache[k].urls[n] = entryFor(rootH, name).then(function(b){
       if (!b || !b.logo) return null;
-      return rootH.getFileHandle(b.logo, { create: false }).then(function(fh){ return fh.getFile(); }).then(function(f){
+      return logoFileHandle(rootH, b.logo).then(function(fh){ return fh.getFile(); }).then(function(f){
         if (f instanceof Blob) return URL.createObjectURL(f);
         // a stand-in file object (tests, some wrappers): build a Blob from its bytes
         return f.arrayBuffer().then(function(ab){ return URL.createObjectURL(new Blob([ab], { type: "image/png" })); });
@@ -2558,6 +2628,7 @@ body.plan-fullscreen .plan-viewport{
   // el: a header element (or a container); the logo goes in a <img class="utz-builder-logo"> inside it (kept, updated, hidden)
   function mount(el, rootH, name){
     if (!el) return Promise.resolve(null);
+    if (el.hasAttribute && el.hasAttribute("data-utz-top")) return mountTop(el, rootH, name);
     var img = el.querySelector(":scope > img.utz-builder-logo");
     if (!img){ img = document.createElement("img"); img.className = "utz-builder-logo"; img.alt = ""; img.hidden = true; el.appendChild(img); }
     var token = (img.__utzToken = (img.__utzToken || 0) + 1);
@@ -2569,13 +2640,92 @@ body.plan-fullscreen .plan-viewport{
       return url;
     });
   }
-  window.UtzBuilders = { FILE: FILE, PREFIX: PREFIX, list: list, add: add, setLogo: setLogo, logoUrl: logoUrl, logoDataUrl: logoDataUrl, contractorOf: contractorOf, mount: mount, forget: forget, slug: slug, downscale: downscale };
+  // ---- the logo at the far right of the top bar (2026-10-02: "builder logo on the far right of the top bar") ----
+  // one <img class="utz-top-builder"> in the app's <header> (the last flex item, just left of the day / night button);
+  // el's data-utz-top lists the ids of the project screens it belongs to -- it shows while one of them is up.
+  var watching = {};
+  function topImg(){
+    var header = document.querySelector("header");
+    if (!header) return null;
+    var img = header.querySelector(":scope > img.utz-top-builder");
+    if (!img){
+      img = document.createElement("img"); img.className = "utz-top-builder"; img.alt = ""; img.hidden = true;
+      header.insertBefore(img, header.querySelector(":scope > .utz-theme-btn"));
+    }
+    return img;
+  }
+  function screenUp(id){ var sc = document.getElementById(id); return !!(sc && !sc.hidden && sc.getClientRects().length); }
+  function refreshTop(){
+    var img = topImg();
+    if (!img) return;
+    var ids = img.__utzScreens || [], up = !ids.length;
+    for (var i = 0; i < ids.length && !up; i++) if (screenUp(ids[i])) up = true;
+    img.hidden = !(up && img.__utzName && img.getAttribute("src"));
+  }
+  function watchScreens(ids){
+    ids.forEach(function(id){
+      var sc = document.getElementById(id);
+      if (!sc || watching[id] === sc || typeof MutationObserver === "undefined") return;
+      watching[id] = sc;
+      new MutationObserver(function(){ refreshTop(); }).observe(sc, { attributes: true, attributeFilter: ["class", "hidden", "style"] });
+    });
+  }
+  function mountTop(el, rootH, name){
+    var img = topImg();
+    if (!img) return Promise.resolve(null);
+    var ids = String(el.getAttribute("data-utz-top") || "").split(/[\s,]+/).filter(Boolean);
+    img.__utzScreens = ids; watchScreens(ids);
+    var token = (img.__utzToken = (img.__utzToken || 0) + 1);
+    img.__utzName = name || "";
+    img.hidden = true;
+    if (!name){ img.removeAttribute("src"); return Promise.resolve(null); }
+    img.title = name;
+    return logoUrl(rootH, name).then(function(url){
+      if (img.__utzToken !== token) return url;
+      if (url) img.src = url; else img.removeAttribute("src");
+      refreshTop();
+      return url;
+    });
+  }
+  // Projects only: copy the logo files an older layout left at the Projects root into logos/ (copies, never moves or deletes)
+  function migrate(rootH){
+    if (!rootH || typeof rootH.values !== "function") return Promise.resolve(0);
+    var found = [], it = rootH.values();
+    function collect(){
+      return it.next().then(function(r){
+        if (r.done) return;
+        var e = r.value;
+        if (e && e.kind === "file" && (e.name === "company-logo.png" || e.name === FILE || e.name.indexOf(PREFIX) === 0)) found.push(e);
+        return collect();
+      });
+    }
+    return collect().then(function(){
+      if (!found.length) return 0;
+      return logosDir(rootH, true).then(function(dir){
+        var n = 0;
+        function next(i){
+          if (i >= found.length) return n;
+          var e = found[i];
+          return dir.getFileHandle(e.name, { create: false }).then(function(){ return next(i + 1); }, function(err){
+            if (!notFound(err)) throw err;
+            return e.getFile().then(function(f){ return writeBlob(dir, e.name, f); }).then(function(){ n++; return next(i + 1); });
+          });
+        }
+        return next(0);
+      });
+    }).then(function(n){ if (n) forget(rootH); return n; }, function(){ return 0; });
+  }
+  window.UtzBuilders = { FILE: FILE, PREFIX: PREFIX, list: list, add: add, setLogo: setLogo, logoUrl: logoUrl, logoDataUrl: logoDataUrl, contractorOf: contractorOf, mount: mount, forget: forget, slug: slug, downscale: downscale, logoFileHandle: logoFileHandle, logosDir: logosDir, migrate: migrate, LOGOS: LOGOS };
 })();
 </script>
 <style>
   /* ---- UTZLINE builder logo on project headers (2026-09-30) -- see shared/builders/builders.js ---- */
-  img.utz-builder-logo{ height: 30px; max-width: 140px; width: auto; object-fit: contain; vertical-align: middle; margin-left: 10px; border-radius: 4px; background: #fff; padding: 2px; }
+  img.utz-builder-logo{ height: 30px; max-width: 240px; width: auto; flex: 0 0 auto; box-sizing: border-box; object-fit: contain; vertical-align: middle; margin-left: 10px; border-radius: 4px; background: #fff; padding: 2px; } /* (2026-10-01) the window stretches to suit the logo, same height */
   img.utz-builder-logo[hidden]{ display: none; }
+  /* ---- the logo at the far right of the top bar (2026-10-02) ---- */
+  img.utz-top-builder{ order: 99; height: 30px; max-width: 200px; width: auto; flex: 0 0 auto; box-sizing: border-box; object-fit: contain; border-radius: 4px; background: #fff; padding: 2px; margin-left: 4px; }
+  img.utz-top-builder[hidden]{ display: none; }
+  @media (max-width: 700px){ img.utz-top-builder{ max-width: 110px; } }
 </style>
 <!-- UTZLINE-BUILDERS END -->
 <!-- UTZLINE-QR-CODE BEGIN (generated from shared/qr -- don't edit here) -->
@@ -2587,7 +2737,7 @@ body.plan-fullscreen .plan-viewport{
        https://utzy79.github.io/UTZLINE-Delivery-ITP/?utz=item&p=<project folder>&l=<level>&r=<room>&j=<code>
      (app: "delivery" (default) | "install" | "manufacture" picks which ITP a phone camera opens; every ITP's
      own Scan QR button reads the same query whichever app the link names, and opens the item in itself.)
-   UtzQr.parseItemLink(text) -> { project, level, room, code } | null
+   UtzQr.parseItemLink(text) -> { project, level, room, code, action } | null   (action: "" or "rework")
    UtzQr.modules(text, ecl) -> { n, isDark(r, c) }      (qrcode-generator by Kazuhiko Arase, MIT, below)
    UtzQr.dataUrl(text, px, opts) -> a PNG data URL, quiet zone included
    UtzQr.svg(text, size) -> an <svg> string
@@ -4891,7 +5041,8 @@ body.plan-fullscreen .plan-viewport{
   function itemLink(o){
     o = o || {};
     var base = BASES[o.app] || BASES.delivery;
-    return base + "?utz=item&p=" + enc(o.project) + "&l=" + enc(o.level) + "&r=" + enc(o.room) + "&j=" + enc(o.code);
+    // (2026-10-01) o.action: "rework" -> the link also carries a=rework: the app opens the item and goes straight to Add rework
+    return base + "?utz=item&p=" + enc(o.project) + "&l=" + enc(o.level) + "&r=" + enc(o.room) + "&j=" + enc(o.code) + (o.action ? "&a=" + enc(o.action) : "");
   }
   function parseItemLink(text){
     text = String(text || "").trim();
@@ -4905,7 +5056,7 @@ body.plan-fullscreen .plan-viewport{
       out[k] = v;
     }
     if (out.utz !== "item" || !out.p || !out.l) return null;
-    return { project: out.p, level: out.l, room: out.r || "", code: out.j || "" };
+    return { project: out.p, level: out.l, room: out.r || "", code: out.j || "", action: out.a || "" };
   }
   function modules(text, ecl){
     var qr = qrcode(0, ecl || "M");
@@ -4924,7 +5075,7 @@ body.plan-fullscreen .plan-viewport{
     var c = document.createElement("canvas"); c.width = size; c.height = size;
     var ctx = c.getContext("2d");
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = opts.dark || "#000000"; // (2026-10-01) opts.dark: the colour of the dark modules (the red "Add rework here" code)
     for (var r = 0; r < m.n; r++) for (var col = 0; col < m.n; col++) if (m.isDark(r, col)) ctx.fillRect((col + quiet) * cell, (r + quiet) * cell, cell, cell);
     var url = c.toDataURL("image/png");
     c.width = c.height = 0;
@@ -5137,7 +5288,7 @@ body.plan-fullscreen .plan-viewport{
   <!-- ---- Level list ---- -->
   <div class="screen" id="screenLevels">
     <button type="button" class="back-link" id="backToProjectsBtn">← All projects</button>
-    <h2 id="levelsHeading"></h2>
+    <h2 id="levelsHeading" data-utz-top="screenLevels,screenReworks,screenLevelPlan,screenRooms,screenItems,screenChecklist,screenRework"></h2>
     <p class="hint">Choose a level to see its rooms.</p>
     <div class="list" id="levelListEl"></div>
     <div class="actions-row"><button class="mbtn" type="button" data-qr-scan title="Scan the QR code on an exported floor plan to open that joinery item">📷 Scan QR code</button></div>
@@ -5338,7 +5489,7 @@ body.plan-fullscreen .plan-viewport{
          Signed off (see flushPendingSave); "View job note" stays (also on
          the plan's marker menu now). Ported from Install ITP v31/v32. -->
     <div class="actions-row">
-      <button class="mbtn mbtn-accent" id="saveChecklistBtn">Save &amp; exit</button>
+      <button class="mbtn mbtn-accent" id="saveChecklistBtn">Save and exit</button>
       <!-- Andrew (2026-09-25): "itp page needs a cancel / return to floor
            plan option" -- leaves for the plan; an unsaved edit gets the
            same Save & leave / Leave without saving / Cancel dialog the
@@ -5771,6 +5922,10 @@ window.__pdfImportLibFailed = false;
 
   /* ------------------------------ reading reworks ------------------------------ */
   // Keeps everything but the photo/snapshot pixels (4 GB tablets).
+  // (2026-10-02) Andrew: "the rework register shows where the rework was logged and by who" -- the app that created an
+  // entry is stored on it (createdApp, e.g. "UTZLINE Install ITP"); shown without the "UTZLINE " prefix. Entries logged
+  // before this change have none and show a dash (no guessing).
+  function appLabel(app){ return String(app || "").replace(/^UTZLINE\s+/i, ""); }
   function slimEntry(e){
     var out = {};
     Object.keys(e).forEach(function(k){ if (k !== "photos" && k !== "locationSnapshot") out[k] = e[k]; });
@@ -6021,7 +6176,7 @@ window.__pdfImportLibFailed = false;
   function logLines(entry, events){
     var f = fold(entry, events);
     var out = [];
-    if (entry.createdAt) out.push({ at: entry.createdAt, by: entry.createdBy || "", what: "Logged", kind: "logged", app: "" });
+    if (entry.createdAt) out.push({ at: entry.createdAt, by: entry.createdBy || "", what: "Logged", kind: "logged", app: entry.createdApp || "" });
     var skippedFirstLogged = false;
     f.changes.forEach(function(c){
       if (c.src === "file" && c.status === "logged" && !skippedFirstLogged && (!entry.createdAt || !c.at || c.at === entry.createdAt || Math.abs(new Date(c.at) - new Date(entry.createdAt)) < 5000)){
@@ -6157,7 +6312,7 @@ window.__pdfImportLibFailed = false;
       ["Project No.", proj.no || "—"], ["Project", proj.name || row.project || "—"],
       ["Head Contractor / Builder", proj.contractor || "—"], ["Level", row.level || "—"],
       ["Area / Room", row.room || "—"], ["Joinery No.", row.code || "—"],
-      ["Cabinet", entry.cabinetNumber || "—"], ["Logged", [fmtDate(entry.createdAt, true), entry.createdBy || ""].filter(Boolean).join(" — ") || "—"],
+      ["Cabinet", entry.cabinetNumber || "—"], ["Logged", [fmtDate(entry.createdAt, true), entry.createdBy || "", entry.createdApp ? "in " + appLabel(entry.createdApp) : ""].filter(Boolean).join(" — ") || "—"],
       ["Current state", f.closed ? "Closed out" : stateLabel(f.status)], ["State set", [fmtDate(f.closed ? f.closed.at : f.statusAt, true), f.closed ? f.closed.by : f.statusBy].filter(Boolean).join(" — ") || "—"],
       ["Delivered to site", f.delivered ? [f.delivered.date || fmtDate(f.delivered.at), f.delivered.by || ""].filter(Boolean).join(" — ") : "Not yet"], ["Photos", String(photos.filter(function(p){ return !/^Delivery location/.test(p.caption); }).length)],
     ];
@@ -6486,7 +6641,7 @@ window.__pdfImportLibFailed = false;
       return st.rows.filter(function(r){
         if (st.projectFilter && r.project !== st.projectFilter) return false;
         if (q){
-          var hay = [r.project, r.level, r.room, r.code, r.entry.cabinetNumber, r.entry.text, r.entry.createdBy].join(" ").toLowerCase();
+          var hay = [r.project, r.level, r.room, r.code, r.entry.cabinetNumber, r.entry.text, r.entry.createdBy, appLabel(r.entry.createdApp)].join(" ").toLowerCase();
           if (hay.indexOf(q) === -1) return false;
         }
         return true;
@@ -6500,6 +6655,7 @@ window.__pdfImportLibFailed = false;
           case "project": return r.project; case "level": return r.level; case "room": return r.room; case "code": return r.code;
           case "cabinet": return r.entry.cabinetNumber || ""; case "text": return r.entry.text || ""; case "photos": return r.entry.photoCount || 0;
           case "state": return STATE_ORDER.indexOf(f.status);
+          case "loggedIn": return appLabel(r.entry.createdApp);
           case "latest": var l = logLines(r.entry, eventsOf(r) || [])[0]; return l ? l.at : "";
           default: return r.entry.createdAt || "";
         }
@@ -6512,7 +6668,7 @@ window.__pdfImportLibFailed = false;
     }
     // State and the action sit right after the item's identity, so on a
     // tablet in portrait they're on screen without scrolling sideways.
-    var COLS = [["project", "Project"], ["level", "Level"], ["room", "Room"], ["code", "Joinery ID"], ["cabinet", "Cabinet"], ["state", "State"], ["", ""], ["text", "Rework"], ["photos", "Photos"], ["logged", "Logged"], ["latest", "Latest"]];
+    var COLS = [["project", "Project"], ["level", "Level"], ["room", "Room"], ["code", "Joinery ID"], ["cabinet", "Cabinet"], ["state", "State"], ["", ""], ["text", "Rework"], ["photos", "Photos"], ["logged", "Logged"], ["loggedIn", "Logged in"], ["latest", "Latest"]];
     function theadHtml(){
       return "<thead><tr>" + COLS.map(function(c){
         if (!c[0]) return "<th></th>";
@@ -6536,6 +6692,7 @@ window.__pdfImportLibFailed = false;
         "<td class=\"urw-text\">" + escapeHtml(e.text || "(no description)") + "</td>" +
         "<td>" + (e.photoCount ? e.photoCount : "—") + "</td>" +
         "<td>" + escapeHtml(fmtDate(e.createdAt, true)) + (e.createdBy ? "<div class=\"urw-small urw-muted\">" + escapeHtml(e.createdBy) + "</div>" : "") + "</td>" +
+        "<td class=\"urw-loggedin\">" + (e.createdApp ? escapeHtml(appLabel(e.createdApp)) : "<span class=\"urw-muted\">—</span>") + "</td>" +
         "<td class=\"urw-latest\">" + (evs ? escapeHtml(latestLine(r, evs)) : "…") + "</td></tr>";
     }
     var regRows = [];
@@ -6549,7 +6706,7 @@ window.__pdfImportLibFailed = false;
           "<div class=\"filters-bar\">" +
             "<select data-urw=\"project\"><option value=\"\">All projects</option></select>" +
             "<select data-urw=\"state\"><option value=\"\">All outstanding</option><option value=\"logged\">Logged</option><option value=\"machined\">Cut</option><option value=\"manufactured\">Ready to deliver</option></select>" +
-            "<input type=\"text\" data-urw=\"search\" placeholder=\"Search code, cabinet, room or text\">" +
+            "<input type=\"text\" data-urw=\"search\" placeholder=\"Search code, cabinet, room, text, who or app\">" +
             "<button class=\"btn secondary sm\" data-urw=\"refresh\">Refresh</button>" +
           "</div>" +
           "<p class=\"table-count\" data-urw=\"count\"></p>" +
@@ -6709,7 +6866,7 @@ window.__pdfImportLibFailed = false;
     function companyLogo(){
       var root = cfg.getRootHandle && cfg.getRootHandle();
       if (!root) return Promise.resolve(null);
-      return root.getFileHandle("company-logo.png", { create: false }).then(function(fh){ return fh.getFile(); }).then(function(file){
+      return UtzBuilders.logoFileHandle(root, "company-logo.png").then(function(fh){ return fh.getFile(); }).then(function(file){
         if (!(file instanceof Blob)) return null;
         return downscaleToDataUrl(file, 500);
       }).catch(function(){ return null; });
@@ -6888,7 +7045,7 @@ window.__pdfImportLibFailed = false;
             "<dt>Room</dt><dd>" + escapeHtml(row.room || "—") + "</dd>" +
             "<dt>Joinery ID</dt><dd><b>" + escapeHtml(row.code) + "</b></dd>" +
             "<dt>Cabinet</dt><dd>" + escapeHtml(e.cabinetNumber || "—") + "</dd>" +
-            "<dt>Logged</dt><dd>" + escapeHtml([fmtDate(e.createdAt, true), e.createdBy || ""].filter(Boolean).join(" — ") || "—") + "</dd>" +
+            "<dt>Logged</dt><dd>" + escapeHtml([fmtDate(e.createdAt, true), e.createdBy || "", e.createdApp ? "in " + appLabel(e.createdApp) : ""].filter(Boolean).join(" — ") || "—") + "</dd>" +
             "<dt>State</dt><dd>" + pillHtml(f) + (f.statusAt ? " <span class=\"urw-small urw-muted\">" + escapeHtml([f.statusBy, fmtDate(f.statusAt, true)].filter(Boolean).join(", ")) + "</span>" : "") + "</dd>" +
             (f.delivered ? "<dt>Delivered</dt><dd>" + escapeHtml([f.delivered.date || fmtDate(f.delivered.at), f.delivered.by].filter(Boolean).join(" — ")) + "</dd>" : "") +
             (f.drafter ? "<dt>Drafter</dt><dd>" + escapeHtml(f.drafter) + (f.drafterAction ? " — <b>" + escapeHtml(drafterActionLabel(f.drafterAction.action)) + "</b> <span class=\"urw-small urw-muted\">" + escapeHtml([f.drafterAction.by, fmtDate(f.drafterAction.at, true)].filter(Boolean).join(", ")) + "</span>" : " <span class=\"urw-small urw-muted\">(flagged" + (f.drafterBy ? " by " + escapeHtml(f.drafterBy) : "") + ")</span>") + "</dd>" : "") +
@@ -7658,17 +7815,34 @@ window.__pdfImportLibFailed = false;
   function foldJoineryStatusEvents(events){
     if (!events || !events.length) return null;
     var statusEvents = events.filter(function(e){ return e.kind === "status" && e.status; });
+    // (2026-10-01) Andrew: "if something is flagged as machined, but then the machining gets reversed, the flags need to be
+    // reversed also". The status pipeline is forward-only (highest rank wins), so a reversal is its OWN event, never a
+    // deleted file: { kind: "statusRetract", from: "machined", by, at } cancels every EARLIER status event of the stage it
+    // names; a stage written AFTER the reversal (the item machined again) counts normally. Apps that don't know this event
+    // yet simply ignore it (they filter on kind) and keep showing the old stage until they are updated.
+    var retractEvents = events.filter(function(e){ return e.kind === "statusRetract" && e.from; });
     var jobNoteEvents = events.filter(function(e){ return e.kind === "jobNote"; });
     if (!statusEvents.length && !jobNoteEvents.length) return null;
     var any = statusEvents[0] || jobNoteEvents[0];
     var rec = { level: any.level || "", room: any.room || "", joineryId: any.joineryId || "" };
+    function cancelled(s){
+      return retractEvents.some(function(r){ return r.from === s.status && (r.at || "") > (s.at || ""); });
+    }
     var best = null;
-    statusEvents.forEach(function(e){ if (!best || joineryStatusRank(e.status) > joineryStatusRank(best.status)) best = e; });
-    if (best){
-      rec.status = best.status; rec.updatedAt = best.at; rec.updatedBy = best.by || "";
-      rec.history = statusEvents.slice().sort(function(a, b){
+    statusEvents.forEach(function(e){
+      if (cancelled(e)) return;
+      if (!best || joineryStatusRank(e.status) > joineryStatusRank(best.status)) best = e;
+    });
+    if (statusEvents.length){
+      if (best){ rec.status = best.status; rec.updatedAt = best.at; rec.updatedBy = best.by || ""; }
+      else { rec.status = ""; rec.updatedAt = ""; rec.updatedBy = ""; }
+      rec.history = statusEvents.map(function(e){
+        var h = { status: e.status, at: e.at, by: e.by || "" };
+        if (cancelled(e)) h.cancelled = true;
+        return h;
+      }).concat(retractEvents.map(function(r){ return { status: r.from, at: r.at, by: r.by || "", reversed: true }; })).sort(function(a, b){
         return (a.at || "") < (b.at || "") ? -1 : (a.at || "") > (b.at || "") ? 1 : 0;
-      }).map(function(e){ return { status: e.status, at: e.at, by: e.by || "" }; });
+      });
     } else {
       rec.status = ""; rec.updatedAt = ""; rec.updatedBy = ""; rec.history = [];
     }
@@ -8429,7 +8603,7 @@ window.__pdfImportLibFailed = false;
       refreshCompanyLogoUI();
       return Promise.resolve();
     }
-    return state.rootHandle.getFileHandle("company-logo.png", { create: false }).then(function(fh){
+    return UtzBuilders.logoFileHandle(state.rootHandle, "company-logo.png").then(function(fh){
       return fh.getFile();
     }).then(function(file){
       return downscaleImageBlob(file, 500);
@@ -9050,7 +9224,7 @@ window.__pdfImportLibFailed = false;
       var d = dialog(justSaved ? "Saved — now sync only these" : "How to sync only these");
       d.card.insertAdjacentHTML("beforeend",
         "<p>Keep these on this device:</p><ul class=\"dp-keep\">" +
-        "<li>the <b>files</b> in “" + esc(rootName) + "” itself — <i>utzline-users.csv</i> (names &amp; PINs) and <i>company-logo.png</i> — not its folders</li>" +
+        "<li>the <b>files</b> in “" + esc(rootName) + "” itself — <i>utzline-users.csv</i> (names &amp; PINs), and its <i>logos</i> folder (the company and builder logos) — not the project folders</li>" +
         ch.map(function(n){ return "<li>“" + esc(rootName) + " › " + esc(n) + "” (the whole folder)</li>"; }).join("") +
         "</ul><p>The other project folders don’t need to be on this device.</p>" +
         "<p><b>Windows tablet (OneDrive):</b> in File Explorer, right-click each folder above → <b>Always keep on this device</b>. Right-click the other project folders → <b>Free up space</b>.</p>" +
@@ -9140,9 +9314,13 @@ window.__pdfImportLibFailed = false;
       // names & PINs (needed to sign anything) and the logo, from the main folder
       p = p.then(function(){
         return Promise.all(["utzline-users.csv", "company-logo.png"].map(function(n){
-          return r.getFileHandle(n).then(function(fh){ return openOne(fh).then(function(){ return { name: n, ok: true }; }, function(){ return { name: n, ok: false, why: "won't open" }; }); },
+          return (n === "company-logo.png" && window.UtzBuilders ? UtzBuilders.logoFileHandle(r, n) : r.getFileHandle(n)).then(function(fh){ return openOne(fh).then(function(){ return { name: n, ok: true }; }, function(){ return { name: n, ok: false, why: "won't open" }; }); },
             function(){ return { name: n, ok: false, why: "not on this device" }; });
         })).then(function(res){ rootFiles = res; });
+      });
+      // (2026-10-02) the logos folder too (the builders' logos), best-effort -- never fails the check
+      p = p.then(function(){
+        return r.getDirectoryHandle("logos").then(function(d){ var l = []; return walk(d, "logos", l).then(function(){ return Promise.all(l.map(function(f){ return openOne(f.h).catch(function(){}); })); }); }).catch(function(){});
       });
       ch.forEach(function(name){
         p = p.then(function(){
@@ -9234,6 +9412,8 @@ window.__pdfImportLibFailed = false;
       if (!state.projectHandle || state.projectName !== t.project) return Promise.reject({ handled: true });
       return loadLevelContext(t.level);
     }).then(function(){
+      // (2026-10-01) the red "Add rework here" code on the exported plan (a=rework): straight to this item's Add rework screen
+      if (t.action === "rework" && t.code && typeof openReworkFromMarker === "function") return openReworkFromMarker(t.room, t.code);
       return t.code ? openItemFromMarker(t.room, t.code) : openRoom(t.room);
     }).catch(function(err){
       if (err && err.handled) return;
@@ -9309,7 +9489,7 @@ window.__pdfImportLibFailed = false;
      backups, kept directly in the main Projects folder -- isn't a project,
      so it's left out of the project list (the same one-line rule is in
      every app in the family). */
-  function isReservedRootFolderName(name){ return String(name || "").trim().toLowerCase() === "schedule backups"; }
+  function isReservedRootFolderName(name){ return String(name || "").trim().toLowerCase() === "schedule backups" || String(name || "").trim().toLowerCase() === "logos"; }
   function populateProjectList(){
     return listSubdirNames(state.rootHandle).then(function(names){
       names = names.filter(function(n){ return !isReservedRootFolderName(n); });
@@ -9334,6 +9514,11 @@ window.__pdfImportLibFailed = false;
         row.addEventListener("click", function(){ openProject(name); });
         projectListEl.appendChild(row);
         state.rootHandle.getDirectoryHandle(name).then(readProjectMeta).then(function(meta){
+          // (2026-10-01) Andrew: "builders logo to go on the far right of each project toolbar scaled to fit the toolbar" -- the row is a flex row, so the logo lands at its far right
+          if (meta && meta.contractor && window.UtzBuilders) UtzBuilders.logoUrl(state.rootHandle, meta.contractor).then(function(url){
+            if (!url || !row.isConnected) return;
+            var im = document.createElement("img"); im.className = "utz-row-logo"; im.alt = ""; im.src = url; im.title = meta.contractor; row.appendChild(im);
+          }, function(){});
           if (meta && (meta.no || meta.name || meta.contractor)){
             var bits = [];
             if (meta.no) bits.push("No. " + meta.no);
@@ -10997,11 +11182,13 @@ window.__pdfImportLibFailed = false;
           '<div class="row-actions"><button type="button" class="mbtn row-goto-location">Go to location</button>' +
           '<button type="button" class="mbtn mbtn-accent row-open">Open room</button></div>';
         row.querySelector(".row-title").textContent = name;
+        row.setAttribute("data-room", name);
         row.addEventListener("click", function(){ openRoom(name); });
         row.querySelector(".row-goto-location").addEventListener("click", function(e){ e.stopPropagation(); showOnPlan(name, ""); });
         row.querySelector(".row-open").addEventListener("click", function(e){ e.stopPropagation(); openRoom(name); });
         roomListEl.appendChild(row);
       });
+      paintRoomReworkFlags().catch(function(err){ console.error("Room rework flags failed:", err); }); // (v37) after the rows are on screen
     });
   }
   // Resolves to {checklistsHandle, pdfHandle} for the current
@@ -11405,13 +11592,74 @@ window.__pdfImportLibFailed = false;
       '<button type="button" class="mbtn row-goto-location">Go to location</button>' +
       '<button type="button" class="mbtn row-goto-pin">Go to pin</button>' +
       '<button type="button" class="mbtn row-job-note">View job note</button>' +
+      '<button type="button" class="mbtn mbtn-rework row-rework">Add rework</button>' +
       '<button type="button" class="mbtn mbtn-accent row-open">Open ITP</button></div>';
+  }
+  /* ---- (Install ITP v58 / Delivery ITP v37, 2026-10-02) rework on the item bar and the room bar ----
+     Andrew: "install itp needs add / open rework on the joinery item bar. and a flag in the room bar that there are
+     outstanding reworks in that room." One cheap read per project (the slim rework entries + each rework file's log,
+     the same data the Outstanding reworks page folds -- no photos), kept for a minute and re-read when the Rework
+     screen is left. byItem[level|room|code] = { total, open }, byRoom[level|room|] = open count. */
+  var reworkSummary = { project: "", at: 0, p: null, byItem: {}, byRoom: {} };
+  function rwKey(level, room, code){ return [level, room, code].map(function(x){ return String(x || "").toLowerCase(); }).join("\u0000"); }
+  function invalidateReworkSummary(){ reworkSummary.p = null; reworkSummary.at = 0; }
+  function loadReworkSummary(force){
+    var name = state.projectName || "", handle = state.projectHandle;
+    if (!handle || !window.UtzRework) return Promise.resolve(reworkSummary);
+    if (!force && reworkSummary.p && reworkSummary.project === name && Date.now() - reworkSummary.at < 60000) return reworkSummary.p;
+    if (reworkSummary.project !== name){ reworkSummary.byItem = {}; reworkSummary.byRoom = {}; }
+    reworkSummary.project = name; reworkSummary.at = Date.now();
+    var p = window.UtzRework.listProjectReworks(handle, name).then(function(res){
+      var files = {};
+      res.rows.forEach(function(r){ var k = (r.isFlat ? "F" : r.level + "\u0000" + r.room) + "\u0000" + r.fileName; (files[k] = files[k] || []).push(r); });
+      return Promise.all(Object.keys(files).map(function(k){
+        var rows = files[k];
+        return window.UtzRework.readLog(handle, rows[0]).then(function(evs){ rows.forEach(function(r){ r.events = evs; }); }, function(){});
+      })).then(function(){ return res.rows; });
+    }).then(function(rows){
+      var byItem = {}, byRoom = {};
+      rows.forEach(function(r){
+        var f = window.UtzRework.fold(r.entry, r.events || []);
+        var ik = rwKey(r.level, r.room, r.code), it = byItem[ik] || (byItem[ik] = { total: 0, open: 0 });
+        it.total++;
+        if (!f.isDone){ it.open++; var rk = rwKey(r.level, r.room, ""); byRoom[rk] = (byRoom[rk] || 0) + 1; }
+      });
+      reworkSummary.byItem = byItem; reworkSummary.byRoom = byRoom;
+      return reworkSummary;
+    }).catch(function(err){ console.error("Reading the rework summary failed:", err); reworkSummary.p = null; return reworkSummary; });
+    reworkSummary.p = p;
+    return p;
+  }
+  // "Add rework" with none logged for the item, "Open rework (n)" with n outstanding, "Open rework" when all are delivered
+  function paintReworkBtn(btn, level, room, code, sum){
+    var it = sum.byItem[rwKey(level, room, code)], total = it ? it.total : 0, open = it ? it.open : 0;
+    btn.textContent = !total ? "Add rework" : (open ? "Open rework (" + open + ")" : "Open rework");
+    btn.setAttribute("data-rework-open", String(open));
+  }
+  function paintRoomReworkFlags(){
+    var level = state.levelName;
+    return loadReworkSummary().then(function(sum){
+      Array.prototype.forEach.call(roomListEl.querySelectorAll(".list-row[data-room]"), function(row){
+        var n = sum.byRoom[rwKey(level, row.getAttribute("data-room"), "")] || 0, flag = row.querySelector(".rw-flag");
+        if (!n){ if (flag) flag.remove(); return; }
+        if (!flag){ flag = document.createElement("div"); flag.className = "row-chip warn rw-flag"; row.insertBefore(flag, row.querySelector(".row-actions")); }
+        flag.textContent = "🛠 " + n + " rework" + (n === 1 ? "" : "s");
+        flag.title = n + " outstanding rework" + (n === 1 ? "" : "s") + " in this room";
+      });
+    });
   }
   function wireRowActions(row, roomName, joineryCode, openFn){
     row.querySelector(".row-goto-location").addEventListener("click", function(e){ e.stopPropagation(); showOnPlan(roomName, joineryCode); });
     row.querySelector(".row-goto-pin").addEventListener("click", function(e){ e.stopPropagation(); goToPinFor(roomName, joineryCode); });
     row.querySelector(".row-job-note").addEventListener("click", function(e){ e.stopPropagation(); openViewJobNoteDialogFor(state.levelName, roomName, joineryCode); });
     row.querySelector(".row-open").addEventListener("click", function(e){ e.stopPropagation(); openFn(); });
+    var rwBtn = row.querySelector(".row-rework");
+    if (rwBtn){
+      var lvl = state.levelName;
+      rwBtn.addEventListener("click", function(e){ e.stopPropagation(); openRework(joineryCode); });
+      paintReworkBtn(rwBtn, lvl, roomName, joineryCode, reworkSummary.project === (state.projectName || "") ? reworkSummary : { byItem: {} });
+      loadReworkSummary().then(function(sum){ if (rwBtn.isConnected !== false) paintReworkBtn(rwBtn, lvl, roomName, joineryCode, sum); });
+    }
   }
   // Builds one Items-list row. `index` (from readItemIndex(), or null/
   // undefined to always take the cold path -- used for the rarely-opened
@@ -12064,6 +12312,7 @@ window.__pdfImportLibFailed = false;
     });
   }
   document.getElementById("backFromReworkBtn").addEventListener("click", function(){
+    invalidateReworkSummary(); // (v37) a rework may have been added / delivered / closed: the item bars and room flags re-read
     populateItemList().then(function(){ showScreen("Items"); });
   });
 
@@ -12337,7 +12586,8 @@ window.__pdfImportLibFailed = false;
       closedAt: null, closedBy: "",
       status: "logged", statusAt: new Date().toISOString(), statusBy: deviceUserName || "", statusHistory: [{ status: "logged", at: new Date().toISOString(), by: deviceUserName || "" }],
       createdAt: new Date().toISOString(),
-      createdBy: deviceUserName || ""
+      createdBy: deviceUserName || "",
+      createdApp: REWORK_APP // (2026-10-02) the Rework register shows where it was logged and by who
     };
     reworkState.data.reworks.unshift(entry); // newest first, same convention as the status-history popup elsewhere in this family
     resetReworkForm();
@@ -13569,7 +13819,7 @@ window.__pdfImportLibFailed = false;
     });
     document.getElementById("addPhotoBtn").disabled = checklistLocked;
     addLocationPinBtn.disabled = checklistLocked;
-    document.getElementById("saveChecklistBtn").textContent = checklistLocked ? "Exit" : "Save & exit";
+    document.getElementById("saveChecklistBtn").textContent = checklistLocked ? "Save and exit" : "Save and exit"; // (2026-10-01) Andrew: "itp pages button to say save and exit, (not just exit)"
   }
   function openItem(fileName, joineryNo){
     var endTimer = pendingOpenTimer || perfStart("list tap → checklist on screen");
@@ -13938,7 +14188,7 @@ window.__pdfImportLibFailed = false;
     // (2026-09-30) the builder's logo beside the company logo (Andrew: "this can be used on the project headers")
     var builderLogoW = 0, builderLogoH = 0, bl = state.builderLogo;
     if (bl && bl.dataUrl && bl.w > 0 && bl.h > 0){
-      var bScale = Math.min(150 / bl.w, 60 / bl.h, 1);
+      var bScale = Math.min(150 / bl.w, 60 / bl.h, 1) * 0.75; // (2026-10-01) Andrew: "builder logo is way too big. make it 25% smaller"
       builderLogoW = bl.w * bScale; builderLogoH = bl.h * bScale;
     }
     var topBandH = Math.max(companyLogoH, builderLogoH, utzLogoSize);
@@ -14189,9 +14439,9 @@ window.__pdfImportLibFailed = false;
       for (var photoStart = 0; photoStart < data.photos.length; photoStart += perPhotoPage){
         doc.addPage("a4", "portrait");
         var gridPageW = doc.internal.pageSize.getWidth(), gridPageH = doc.internal.pageSize.getHeight();
-        var gridTop = topContentY;
+        var gridTop = topContentY + 22; // (2026-10-01) the PHOTOS heading sits BELOW the logo band (the logos used to cover it)
         doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(20);
-        doc.text("PHOTOS", margin, gridTop - 10);
+        doc.text("PHOTOS", margin, topContentY + 6);
         var gridW = gridPageW - margin * 2, gridH = gridPageH - gridTop - margin;
         var cellW = gridW / PHOTO_COLS, cellH = gridH / PHOTO_ROWS, cellPad = 10;
         data.photos.slice(photoStart, photoStart + perPhotoPage).forEach(function(photo, idx){
@@ -14234,11 +14484,11 @@ window.__pdfImportLibFailed = false;
         var thisPageW = doc.internal.pageSize.getWidth();
         if (companyLogoW > 0 && companyLogoH > 0){
           try{
-            doc.addImage(state.companyLogoDataUrl, "PNG", margin, margin, companyLogoW, companyLogoH, undefined, "FAST");
+            doc.addImage(state.companyLogoDataUrl, "PNG", (thisPageW - companyLogoW) / 2, margin, companyLogoW, companyLogoH, undefined, "FAST"); // (2026-10-01) our (company) logo in the centre of the header
           }catch(e){ console.error("Company logo failed to draw in PDF:", e); }
         }
         if (builderLogoW > 0 && builderLogoH > 0){
-          try{ doc.addImage(bl.dataUrl, "PNG", margin + (companyLogoW > 0 ? companyLogoW + 18 : 0), margin, builderLogoW, builderLogoH, undefined, "FAST"); }catch(e){ console.error("Builder logo failed to draw in PDF:", e); }
+          try{ doc.addImage(bl.dataUrl, "PNG", margin, margin, builderLogoW, builderLogoH, undefined, "FAST"); /* (2026-10-01) the builder's logo far left */ }catch(e){ console.error("Builder logo failed to draw in PDF:", e); }
         }
         try{
           doc.addImage(UTZLINE_ITP_LOGO_DATA_URL, "PNG", thisPageW - margin - utzLogoSize, margin, utzLogoSize, utzLogoSize, undefined, "FAST");
