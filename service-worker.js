@@ -171,7 +171,7 @@ var ICON_VERSION = "v1";
 // v32 (2026-10-01): RC 1.0 -- Windows' 260-character path limit: shorter record names in the event store (see README)
 // v37 (2026-10-02): RC 1.0 -- Add rework / Open rework (n) on the item bar, room rework flag, createdApp on every rework, sign-in cover
 // v38 (2026-10-02): RC 1.0 -- builder logo far right of the top bar, logos folder, reversed Machined, dark-mode controls.
-var CACHE_NAME = "utzline-delivery-itp-cache-v61";
+var CACHE_NAME = "utzline-delivery-itp-cache-v64";
 
 var PRECACHE_URLS = [
   "./",
