@@ -330,7 +330,8 @@
    scales below).
      UtzPlanMarker.FILL         "#0011ff" -- the default fill (from Andrew's swatch)
      UtzPlanMarker.DOT_SCALE    0.6  = the old 0.8 ("20% smaller", v35/v42/v69) x 0.75 (25% smaller again)
-     UtzPlanMarker.TEXT_SCALE   0.75 -- multiply the app's current label size by this
+     UtzPlanMarker.TEXT_SCALE   0.5625 -- multiply the saved label size by this (UTZLINE Projects' look, 2026-10-06: "every single app MUST look the same as projects")
+     UtzPlanMarker.labelPos(obj) -> { x, y }  where the code is drawn: the saved offset from the dot, pulled in by the same scales as the dot / text (Projects' planMarkerTextPos)
      UtzPlanMarker.drawLabel(parent, { x, y, text, fontSize, color, family, anchor, rot, id })
                                   (2026-10-02) the marker's text drawn exactly as Site Measure / Viewer draw it: the label's OWN saved
                                   colour (default dark), weight 500, the plan font, a black halo inside a white ring, multi-line, rotation.
@@ -348,7 +349,7 @@
   "use strict";
   if (window.UtzPlanMarker) return;
   var NS = "http://www.w3.org/2000/svg";
-  var FILL = "#0011ff", DOT_SCALE = 0.6, TEXT_SCALE = 0.75;
+  var FILL = "#0011ff", DOT_SCALE = 0.6, TEXT_SCALE = 0.5625; // (2026-10-06) the UTZLINE Projects look is the reference: 0.75 x 0.75
   function iconFor(rec){
     if (!rec) return "";
     var s = rec.status || "";
@@ -388,18 +389,19 @@
     parent.appendChild(g);
     return g;
   }
-  function fontStack(f){ return f === "mono" ? "'IBM Plex Mono',monospace" : "'IBM Plex Sans',Arial,sans-serif"; }
+  function fontStack(f){ return f === "mono" ? "-apple-system, 'Segoe UI', Roboto, 'IBM Plex Sans', Arial, sans-serif" : "'IBM Plex Sans',Arial,sans-serif"; }
   function drawLabel(parent, o){
     var fs = Number(o.fontSize) > 0 ? Number(o.fontSize) : 16;
     var lines = String(o.text == null ? "" : o.text).split("\n");
-    var blackW = Math.max(0.7, fs * 0.065), whiteW = blackW + Math.max(0.9, fs * 0.045);
+    // (2026-10-06) Andrew: Projects' text (dark outline) with a THICK white border like the dot's ring
+    var blackW = Math.max(4, fs * 0.12), whiteW = blackW + Math.max(5, fs * 0.28);
     var x = o.x, y = o.y, top = null;
     function pass(stroke, sw, fill, cls){
-      var t = el("text", { x: x, y: y, "font-size": fs, fill: fill, "font-family": fontStack(o.family), "font-weight": 500,
+      var t = el("text", { x: x, y: y, "font-size": fs, fill: fill, "font-family": "inherit", /* (2026-10-06) the app font, exactly as Projects draws it; never the mono font (dotted zero) */ "font-weight": 600,
         transform: "rotate(" + (o.rot || 0) + " " + x + " " + y + ")", "text-anchor": o.anchor || "middle", // (2026-10-04) centred by an explicit 0.26 em shift (below), not dominant-baseline, which PDFs ignore -- same as Site Measure
         stroke: stroke, "stroke-width": sw, "stroke-linejoin": "round", "paint-order": "stroke fill", "class": cls, "data-marker-id": o.id });
       if (cls !== "marker-label") t.setAttribute("pointer-events", "none");
-      else t.setAttribute("style", "font-size:" + fs + "px;font-weight:500"); // the apps' own .marker-label CSS (14px / 600) must not win
+      else t.setAttribute("style", "font-size:" + fs + "px;font-weight:600"); // the apps' own .marker-label CSS (14px / 600) must not win
       var dy0 = -((lines.length - 1) / 2) * fs * 1.28 + fs * 0.26;
       lines.forEach(function(line, i){
         var ts = el("tspan", { x: x, dy: i === 0 ? dy0 : fs * 1.28 });
@@ -410,11 +412,19 @@
       return t;
     }
     pass("#ffffff", whiteW, "#ffffff", "marker-label-under");
-    pass("#000000", blackW, "#000000", "marker-label-under");
-    top = pass(undefined, undefined, o.color || "#1b2422", "marker-label");
+    pass("#0b0707", blackW, "#0b0707", "marker-label-under");
+    top = pass(undefined, undefined, o.color || "#ffffff", "marker-label");
     return top;
   }
-  window.UtzPlanMarker = { FILL: FILL, DOT_SCALE: DOT_SCALE, TEXT_SCALE: TEXT_SCALE, iconFor: iconFor, draw: draw, drawLabel: drawLabel };
+  function labelPos(obj){
+    var r = Number(obj && obj.r) || 27, lab = (obj && obj.label) || {};
+    var lx = typeof lab.x === "number" ? lab.x : obj.x, ly = typeof lab.y === "number" ? lab.y : obj.y + r + 22;
+    var dx = lx - obj.x, dy = ly - obj.y, len = Math.sqrt(dx * dx + dy * dy);
+    if (!(len > r)) return { x: lx, y: ly };
+    var nl = r * DOT_SCALE + (len - r) * TEXT_SCALE;
+    return { x: obj.x + dx / len * nl, y: obj.y + dy / len * nl };
+  }
+  window.UtzPlanMarker = { labelPos: labelPos, FILL: FILL, DOT_SCALE: DOT_SCALE, TEXT_SCALE: TEXT_SCALE, iconFor: iconFor, draw: draw, drawLabel: drawLabel };
 })();
 </script>
 <!-- UTZLINE-PLAN-MARKER END -->
@@ -843,7 +853,7 @@ header .brand-text{ font-weight:700; letter-spacing:.02em; font-size:16px; }
 header .brand-text b{ color:var(--accent); }
 header .crumbs{
   margin-left:auto; font-size:12px; color:var(--text-secondary);
-  font-family:'IBM Plex Mono',monospace; text-align:right; max-width:60%;
+  font-family: -apple-system, "Segoe UI", Roboto, "IBM Plex Sans", Arial, sans-serif; text-align:right; max-width:60%;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 /* (2026-10-04) a long project / level / item: three short lines instead of one running under the company logo */
@@ -944,6 +954,19 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
 }
 .empty-note{ font-size:13px; color:var(--text-secondary); padding:14px 0; }
 
+/* (2026-10-07) Pre-delivery check */
+.pd-group{ font-size:12px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--text-secondary); margin:14px 0 6px; }
+.pd-section{ font-size:15px; font-weight:700; margin:18px 0 4px; }
+.pd-row{ display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:9px; border:1px solid var(--border-strong); background:var(--surface-1); cursor:pointer; }
+.pd-row.on{ border-color:var(--accent); background:var(--accent-soft); }
+.pd-row input{ width:22px; height:22px; flex:none; accent-color:var(--accent); }
+.pd-row .row-main{ flex:1; min-width:0; }
+.pd-row .row-title{ font-weight:600; }
+.pd-row .row-sub{ font-size:12px; color:var(--text-secondary); margin-top:2px; }
+.pd-count{ font-size:14px; font-weight:600; margin:10px 0; }
+.pd-note{ width:100%; box-sizing:border-box; min-height:56px; font:inherit; padding:9px 11px; border-radius:8px; border:1px solid var(--border-strong); background:var(--surface-1); color:var(--text-primary); }
+.pd-last{ font-size:12px; color:var(--text-secondary); margin:6px 0; }
+
 /* ---- title block ---- */
 .title-block{
   border:1px solid var(--border-strong); border-radius:10px; overflow:hidden;
@@ -971,7 +994,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
 .check-row .cr-top{ display:flex; align-items:flex-start; gap:10px; }
 .check-row .cr-num{
   flex:none; width:22px; height:22px; border-radius:6px; background:var(--surface-2);
-  color:var(--text-secondary); font-size:11px; font-family:'IBM Plex Mono',monospace;
+  color:var(--text-secondary); font-size:11px; font-family: -apple-system, "Segoe UI", Roboto, "IBM Plex Sans", Arial, sans-serif;
   display:flex; align-items:center; justify-content:center; margin-top:1px;
 }
 .check-row .cr-text{ flex:1; font-size:13.5px; line-height:1.4; }
@@ -1025,6 +1048,11 @@ textarea.notes-box{
 #screenRework .rework-form{ border:1px solid var(--danger); border-radius:10px; padding:12px; }
 .mbtn-rework{ color:var(--danger); border-color:var(--danger); font-weight:600; }
 .mbtn-rework:hover{ background:rgba(200,57,28,.12); }
+/* (2026-10-06) Andrew: Open rework is its own solid red button, right of Open ITP */
+.mbtn-rework-solid{ background:var(--danger,#d94a4a); border-color:var(--danger,#d94a4a); color:#fff; font-weight:700; }
+.mbtn-rework-solid:hover{ background:var(--danger,#d94a4a); filter:brightness(1.1); }
+/* (2026-10-06) Andrew: no Users pill in the ITPs */
+.utz-users-pill{ display:none !important; }
 .reworks-group-title{ font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--danger); margin:14px 0 6px; }
 .rework-card .rework-where{ font-size:12px; color:var(--text-secondary); margin-bottom:4px; }
 .rework-card-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
@@ -2230,11 +2258,62 @@ body.plan-fullscreen .plan-viewport{
   }
   function docsForget(){ dirMemo = typeof WeakMap === "function" ? new WeakMap() : null; }
 
+  /* (2026-10-07) Andrew: "Site measure saves in the joinery summaries should open as the proper PDF, everywhere" -- every summary's site measure
+     picture / save list opens through this one function. The saved PDF (PDFs\CM\<Level>\<Room>\[<item>\]) is opened in the viewer under its
+     display name, exactly as the "Site measure PDF" row does; only when no PDF exists is the save's picture (JPG) opened, and then under a name that
+     says it is the picture-only fallback.
+       o.stamp   the save's own stamp ("yy-mm-dd hh-mm-ss"): the PDF saved within 20 minutes of it is opened; none = the newest PDF
+       o.jpgUrl  the save's picture (data URL) -- the fallback
+       o.title   function(pdf) -> the display name (default: the file's name)
+       o.toast   function(message);  o.view  function(fileOrBlob, name) (default: UtzPdfView.open)
+     -> Promise<{ kind: "pdf" | "jpg" | null, fallback: bool, name }> */
+  function stampTime(str){
+    var m = /(\d{2,4})-(\d{2})-(\d{2})[ T](\d{2})-(\d{2})-(\d{2})/.exec(String(str || ""));
+    if (!m) return 0;
+    var y = +m[1]; if (y < 100) y += 2000;
+    return new Date(y, +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  }
+  function pickSiteMeasurePdf(list, stamp){
+    if (!list || !list.length) return null;
+    var want = stampTime(stamp);
+    if (!want) return list[0];
+    var best = null, bestD = 20 * 60 * 1000 + 1;
+    list.forEach(function(p){
+      var t = stampTime(p.name) || p.t || 0, d = Math.abs(t - want);
+      if (t && d < bestD){ best = p; bestD = d; }
+    });
+    return best;
+  }
+  function openSiteMeasure(ph, level, room, key, o){
+    o = o || {};
+    var say = o.toast || function(){};
+    var view = o.view || function(b, n){ if (window.UtzPdfView && window.UtzPdfView.open) return window.UtzPdfView.open(b, n); };
+    return siteMeasurePdfs(ph, level, room, key).then(function(list){
+      var pick = pickSiteMeasurePdf(list, o.stamp);
+      if (pick){
+        return pick.handle.getFile().then(function(f){
+          var name = ((o.title ? o.title(pick) : "") || pick.name.replace(/\.pdf$/i, "")).replace(/\.pdf$/i, "") + ".pdf";
+          view(f, name);
+          return { kind: "pdf", fallback: false, name: name };
+        });
+      }
+      if (o.jpgUrl){
+        return fetch(o.jpgUrl).then(function(r){ return r.blob(); }).then(function(b){
+          var name = "Site measure - picture only (JPG fallback, no PDF saved).jpg";
+          view(b, name);
+          return { kind: "jpg", fallback: true, name: name };
+        });
+      }
+      say("No site measure PDF or picture is saved for this yet.");
+      return { kind: null, fallback: false, name: "" };
+    }).catch(function(){ say("Couldn't open that site measure — try again."); return { kind: null, fallback: false, name: "", error: true }; });
+  }
+
   window.UtzItemFiles = {
     version: 1, MAX: MAX,
     clean: clean, baseOf: baseOf, valid: valid, assign: assign, register: register, fileKey: fileKey,
     initials: initials, stamp: stamp, tripleKey: tripleKey, roomMeasureKey: roomMeasureKey,
-    levelSeg: levelSeg, roomShort: roomShort, docTitle: docTitle, docStamp: docStamp, siteMeasurePdfs: siteMeasurePdfs, roomSeg: roomSeg, where: where, docPathSegs: docPathSegs,
+    levelSeg: levelSeg, roomShort: roomShort, docTitle: docTitle, docStamp: docStamp, siteMeasurePdfs: siteMeasurePdfs, openSiteMeasure: openSiteMeasure, pickSiteMeasurePdf: pickSiteMeasurePdf, roomSeg: roomSeg, where: where, docPathSegs: docPathSegs,
     docsDir: docsDir, docsKeys: docsKeys, docsForget: docsForget, isNotFound: isNF,
     itemNo: itemNo, label: label, pad3: pad3, itemSegs: itemSegs, roomSegs: roomSegs, itemDir: itemDir, roomDir: roomDir, listItemDirs: listItemDirs, itpChecklist: itpChecklist, itpLogDir: itpLogDir, itpPdfDir: itpPdfDir, smParent: smParent, smDir: smDir, smDirForItem: smDirForItem, smParentSegs: smParentSegs, listSiteMeasureKeys: listSiteMeasureKeys, ordersDir: ordersDir, listOrdersDirs: listOrdersDirs, ORDERS_ROOT: ORDERS_ROOT, walk: walkDirs, tryWalk: tryWalk,
     _maps: function(){ return maps; }
@@ -2309,8 +2388,9 @@ body.plan-fullscreen .plan-viewport{
     var ph = o.projectHandle, IF = window.UtzItemFiles;
     var key = IF ? IF.fileKey(o.level, o.room, o.code, o.projectName) : o.code;
     var el = document.createElement("div"); el.className = "uis";
-    el.innerHTML = '<div class="uis-bar"><h2></h2><button type="button" class="mbtn">Close</button></div><div class="uis-body"></div>';
-    el.querySelector("h2").textContent = [IF && IF.label ? IF.label(o.level, o.room, o.code, o.projectName) : o.code, o.room, o.level].filter(Boolean).join(" · "); // (2026-10-04) "JG.33.1 - 001 · Room · Level"
+    el.innerHTML = '<div class="uis-bar"><button type="button" class="mbtn">Close</button><h2></h2></div><div class="uis-body"></div>';
+    el.querySelector("h2").textContent = "Joinery summary"; // (2026-10-07) Andrew: "the joinery summary page ... should match all the others (like viewer)" -- the Viewer's page: same cards, same order, same wording
+    var itemLabel = IF && IF.label ? IF.label(o.level, o.room, o.code, o.projectName) : o.code; // (2026-10-04) "JG.33.1 - 001"
     var body = el.querySelector(".uis-body");
     document.body.appendChild(el);
     var c = current = { el: el, pushed: false };
@@ -2333,18 +2413,21 @@ body.plan-fullscreen .plan-viewport{
     function titleOf(tag, fileName, lastModified, rev){
       return IF.docTitle({ tag: tag, project: ph.name, room: o.room, code: o.code, no: IF.itemNo(o.level, o.room, o.code, ph.name), rev: rev || "", stamp: IF.docStamp(fileName, lastModified) });
     }
-    var details = card("Details"), smC = card("Site measure"), sdC = card("Shop drawings"), soC = card("Set-out drawings"), jnC = card("Job notes"),
-        itpC = card("ITPs"), ordC = card("Sub orders"), rwC = card("Rework");
+    var details = card("Details"), smC = card("Site Measure (check measures)"), sdC = card("Shop drawings"), jnC = card("Job notes"), soC = card("Set-out drawings"),
+        itpC = card("ITPs"), rwC = card("Rework"), dlC = card("Delivery location"), ordC = card("Sub orders");
     // Details
     ph.getFileHandle("joinery-items.json", { create: false }).then(readJson, function(){ return null; }).then(function(arr){
       if (!live()) return;
       var lc = function(x){ return String(x || "").toLowerCase(); };
       var it = (Array.isArray(arr) ? arr : []).filter(function(x){ return x && lc(x.joineryId) === lc(o.code) && lc(x.level) === lc(o.level) && lc(x.room) === lc(o.room); })[0] || {};
       var st = o.status || null;
-      var dl = [["No.", parseInt(it.itemNo, 10) > 0 && IF ? IF.pad3(it.itemNo) : ""], ["Code", o.code], ["Description", it.description], ["Level", o.level], ["Room", o.room], ["Work order", it.workOrderNo], ["Status", st && st.label]];
+      var dl = [["Level", o.level], ["Room", o.room], ["Joinery ID", itemLabel], ["Description", it.description], ["Work order", it.workOrderNo], ["Status", st && st.label]];
       details.innerHTML = "<dl class=\"uis-grid\">" + dl.filter(function(p){ return p[1]; }).map(function(p){ return "<dt>" + esc(p[0]) + "</dt><dd>" + esc(p[1]) + "</dd>"; }).join("") + "</dl>" +
         (st && st.history && st.history.length ? "<p class=\"uis-sub\" style=\"margin:8px 0 0;\">" + st.history.slice(-6).reverse().map(function(h){ return esc(h.status + (h.by ? " — " + h.by : "") + (h.at ? " · " + new Date(h.at).toLocaleDateString() : "")); }).join("<br>") + "</p>" : "");
     });
+    function openSm(jpgUrl, stamp){
+      return IF.openSiteMeasure(ph, o.level, o.room, key, { jpgUrl: jpgUrl, stamp: stamp, toast: o.toast, title: function(p){ return titleOf("SITE MEASURE", p.name, p.t); } });
+    }
     // Site measure: the newest save's snapshot -- the item's own page, else its room's site measure
     // (2026-10-04) Project Saves\Site Measures\<Level>\<Room>\<page>\overlays\
     IF.smDirForItem(ph, key).then(function(d){ return d ? tryDir(d, "overlays") : null; }).then(function(d){ return list(d, function(e){ return e.kind === "file" && /\.json$/i.test(e.name); }); }).then(function(ls){ ls = [ls];
@@ -2357,7 +2440,9 @@ body.plan-fullscreen .plan-viewport{
         smC.innerHTML = "<p class=\"uis-sub\" style=\"margin:0 0 6px;\">" + esc((d && d.savedBy ? d.savedBy + " · " : "") + (d && d.savedAt ? new Date(d.savedAt).toLocaleString() : "")) + " · " + all.length + " save" + (all.length === 1 ? "" : "s") + "</p>";
         if (url){
           var img = document.createElement("img"); img.className = "uis-snap"; img.alt = "Latest site measure"; img.src = url;
-          img.addEventListener("click", function(){ fetch(url).then(function(r){ return r.blob(); }).then(function(b){ if (window.UtzPdfView) UtzPdfView.open(b, "Site measure.jpg"); }); });
+          img.style.cursor = "zoom-in"; img.title = "Opens the site measure PDF";
+          // (2026-10-07) the saved PDF first; the picture only when no PDF was saved (labelled as the fallback) -- UtzItemFiles.openSiteMeasure
+          img.addEventListener("click", function(){ openSm(url, all[0].name.replace(/\.json$/i, "").replace(/^.* - /, "")); });
           smC.appendChild(img);
         }
         // (2026-10-04) every save is listed, each opening in the viewer
@@ -2367,7 +2452,7 @@ body.plan-fullscreen .plan-viewport{
             var b = document.createElement("button"); b.type = "button"; b.style.cssText = "display:block;width:100%;text-align:left;margin:4px 0;padding:8px 10px;font:inherit;color:inherit;background:transparent;border:1px solid rgba(128,128,128,.5);border-radius:8px;";
             b.textContent = h.name.replace(/\.json$/i, "");
             b.addEventListener("click", function(){
-              readJson(h).then(function(x){ var u = x && x.overlaySnapshotDataURL; if (!u) return; return fetch(u).then(function(r){ return r.blob(); }).then(function(bl){ if (window.UtzPdfView) UtzPdfView.open(bl, "Site measure.jpg"); }); }).then(null, function(){});
+              readJson(h).then(function(x){ openSm(x && x.overlaySnapshotDataURL, h.name.replace(/\.json$/i, "").replace(/^.* - /, "")); }).then(null, function(){});
             });
             wrap.appendChild(b);
           });
@@ -2385,23 +2470,47 @@ body.plan-fullscreen .plan-viewport{
     }, function(){ smPdfC.hidden = true; });
     // Shop drawings (latest revision of each drawing), set-out drawings, job notes
     function docs(branch, sub){ return IF && IF.docsDir ? IF.docsDir(ph, branch, key, false, sub).then(null, function(){ return null; }) : Promise.resolve(null); }
-    docs("SD").then(function(d){ return list(d, function(e){ return e.kind === "directory" && !/^(Returned|Replaced|Older)$/i.test(e.name); }); }).then(function(groups){
-      return Promise.all(groups.map(function(g){ return list(g, function(e){ return e.kind === "file" && /\.pdf$/i.test(e.name); }).then(function(fs){
-        // newest by the file's own date (names differ between the apps' versions)
-        return Promise.all(fs.map(function(f){ return f.getFile().then(function(x){ return { h: f, t: x.lastModified || 0 }; }, function(){ return { h: f, t: 0 }; }); })).then(function(ts){
-          ts.sort(function(a, b){ return b.t - a.t; });
-          if (!ts[0]) return null;
-          // (2026-10-04) Andrew: "the shop drawing file name is completely wrong" -- the folder is a generated id; the drawing's own name is in the .json
-          // saved beside the PDF ("original"), so that is the title
-          var top = ts[0], jsonName = top.h.name.replace(/\.pdf$/i, "") + ".json";
-          return g.getFileHandle(jsonName, { create: false }).then(readJson, function(){ return null; }).then(function(info){
-            var orig = info && typeof info.original === "string" ? info.original.replace(/\.pdf$/i, "").trim() : "";
-            var rm = /^REV ([A-Z]{1,3}|\d+) - /.exec(top.h.name), ttl = titleOf("SHOP DRAWING", top.h.name, top.t, rm ? "REV " + rm[1] : "");
-            return { label: ttl + (ts.length > 1 ? " (latest of " + ts.length + ")" : ""), sub: (orig ? orig + " · " : "") + (top.t ? new Date(top.t).toLocaleDateString() : ""), handle: top.h, saveName: ttl + ".pdf" };
-          });
-        });
-      }); })).then(function(xs){ if (live()) rows(sdC, xs.filter(Boolean), "No shop drawings yet."); });
+    // (2026-10-07) like the Viewer: a status line, then Sent / Returned to resubmit / Approved (each drawing's PDFs, newest first)
+    var sdStatusEl = document.createElement("p"); sdStatusEl.style.cssText = "margin:0 0 8px;font-size:14px;font-weight:600;";
+    var sdParts = [["sent", "Sent"], ["returned", "Returned to resubmit"], ["approved", "Approved"]], sdBox = {};
+    sdC.innerHTML = ""; sdC.appendChild(sdStatusEl);
+    sdParts.forEach(function(p, i){
+      var h = document.createElement("p"); h.className = "uis-sub"; h.style.cssText = "font-weight:600;margin:" + (i ? "12px" : "0") + " 0 4px;"; h.textContent = p[1]; sdC.appendChild(h);
+      var box = document.createElement("div"); sdBox[p[0]] = box; box.innerHTML = "<p class=\"uis-empty\">Loading…</p>"; sdC.appendChild(box);
     });
+    docs("SD").then(function(d){ return list(d, function(e){ return e.kind === "directory" && !/^(Replaced|Older)$/i.test(e.name); }); }).then(function(groups){
+      function pdfsOf(dirH){
+        return list(dirH, function(e){ return e.kind === "file" && /\.pdf$/i.test(e.name); }).then(function(fs){
+          return Promise.all(fs.map(function(f){ return f.getFile().then(function(x){ return { h: f, name: f.name, t: x.lastModified || 0 }; }, function(){ return { h: f, name: f.name, t: 0 }; }); }));
+        });
+      }
+      function sub(g, n){ return tryDir(g, n).then(function(d){ return d ? pdfsOf(d) : []; }); }
+      return Promise.all(groups.filter(function(g){ return !/^(Returned|Approved)$/i.test(g.name); }).map(function(g){
+        return Promise.all([pdfsOf(g), sub(g, "Returned"), sub(g, "Approved"), g.getFileHandle ? Promise.resolve(g) : Promise.resolve(g)]).then(function(r){ return { g: g, sent: r[0], returned: r[1], approved: r[2] }; });
+      }));
+    }).then(function(gs){
+      if (!live()) return;
+      function revOf(n){ var m = /^REV ([A-Z]{1,3}|\d+) - (.*)$/.exec(n); return m ? { raw: m[1], stamp: m[2] } : { raw: "", stamp: n }; }
+      var kinds = [];
+      gs.forEach(function(x){
+        var sent = x.sent.slice().sort(function(a, b){ var p = revOf(a.name).stamp, q = revOf(b.name).stamp; return p < q ? -1 : p > q ? 1 : 0; });
+        if (!sent.length) return;
+        var last = revOf(sent[sent.length - 1].name), known = {}; sent.forEach(function(y){ known[revOf(y.name).raw] = 1; });
+        var ans = null;
+        [["returned", x.returned], ["approved", x.approved]].forEach(function(pair){ pair[1].forEach(function(c){ var r = revOf(c.name); if (r.raw !== last.raw && known[r.raw]) return; if (!ans || r.stamp > ans.stamp) ans = { kind: pair[0], stamp: r.stamp }; }); });
+        kinds.push(ans ? ans.kind : "sent");
+      });
+      var line = !kinds.length ? "No shop drawing yet" : kinds.indexOf("returned") !== -1 ? "Returned to resubmit" : kinds.indexOf("sent") !== -1 ? "Sent — awaiting approval" : "Approved";
+      sdStatusEl.textContent = "Status: " + line;
+      sdParts.forEach(function(p){
+        var all = []; gs.forEach(function(x){ x[p[0]].forEach(function(f){ all.push(f); }); });
+        all.sort(function(a, b){ return b.t - a.t || b.name.localeCompare(a.name); });
+        rows(sdBox[p[0]], all.map(function(f){
+          var rm = /^REV ([A-Z]{1,3}|\d+) - /.exec(f.name), ttl = titleOf("SHOP DRAWING", f.name, f.t, rm ? "REV " + rm[1] : "");
+          return { label: ttl, sub: f.t ? new Date(f.t).toLocaleDateString() : "", handle: f.h, saveName: ttl + ".pdf" };
+        }), "None.");
+      });
+    }, function(){ if (live()) sdStatusEl.textContent = "Couldn't read the shop drawings."; });
     docs("Set Out").then(function(d){ return list(d, function(e){ return e.kind === "file" && /\.pdf$/i.test(e.name); }); }).then(function(fs){
       if (live()) rows(soC, fs.map(function(f){ var ttl = titleOf("SET OUT", f.name, 0); return { label: ttl, sub: f.name.replace(/^Set out - [\d-]+ [\d-]+ - /, "").replace(/\.pdf$/i, ""), handle: f, saveName: ttl + ".pdf" }; }), "No set-out drawings yet.");
     });
@@ -2409,18 +2518,46 @@ body.plan-fullscreen .plan-viewport{
       fs.sort(function(a, b){ return b.name.localeCompare(a.name); });
       if (live()) rows(jnC, fs.map(function(f){ var ttl = titleOf("AS BUILT", f.name, 0); return { label: ttl, handle: f, saveName: ttl + ".pdf" }; }), "No job notes yet.");
     });
-    // ITPs: (2026-10-04) each item's own folder, PDFs\ITPs\<app>\<Level>\<Room>\<item>\
-    var apps = ["Manufacture", "Install", "Delivery"], loc = { level: o.level, room: o.room };
+    // ITPs: (2026-10-04) each item's own folder, PDFs\ITPs\<app>\<Level>\<Room>\<item>\; (2026-10-07) like the Viewer: how far each is (answered, who signed, what it still needs)
+    var apps = ["Manufacture", "Install", "Delivery"], loc = { level: o.level, room: o.room }, roleOf = { Manufacture: ["builder", "supervisor"], Install: ["installer", "supervisor"], Delivery: ["driver", "supervisor"] };
+    function itpData(a){
+      return IF.itpChecklist ? IF.itpChecklist(ph, a + " ITP", o.level, o.room, key).then(function(fh){ return fh ? readJson(fh) : null; }, function(){ return null; }) : Promise.resolve(null);
+    }
+    function itpLine(a, data){
+      if (!data) return "Not started";
+      var r = Array.isArray(data.rows) ? data.rows : [], total = r.length, answered = r.filter(function(x){ return x && x.status; }).length, hasNo = r.some(function(x){ return x && x.status === "no"; });
+      var so = data.signoff || {}, roles = roleOf[a], who = roles.filter(function(k){ return so[k] && so[k].sig; }).map(function(k){ return (so[k].name || k) + (so[k].date ? " (" + so[k].date + ")" : ""); });
+      var photos = Array.isArray(data.photos) ? data.photos.length : 0, needs = [], signed;
+      if (a === "Delivery"){ var drv = !!(so.driver && so.driver.sig); if (drv && !photos) needs.push("a photo"); if (drv && !data.deliveryLocationPin) needs.push("a delivery pin"); signed = drv && !hasNo && photos > 0 && !!data.deliveryLocationPin; }
+      else signed = roles.every(function(k){ return so[k] && so[k].sig; }) && !hasNo;
+      return (signed ? "Signed off" : hasNo ? "Has a No" : answered + " of " + total + " answered") + (who.length ? " · Signed: " + who.join(", ") : "") + (needs.length ? " · Still needs " + needs.join(" and ") : "") + (photos ? " · " + photos + " photo" + (photos === 1 ? "" : "s") : "");
+    }
     Promise.all(apps.map(function(a){
-      return IF.itpPdfDir(ph, a + " ITP", key, loc).then(function(d){
-        return list(d, function(e){ return e.kind === "file" && /\.pdf$/i.test(e.name); });
-      }, function(){ return []; }).then(function(out){ out.sort(function(x, y){ return y.name.localeCompare(x.name); }); if (!out[0]) return { label: a + " ITP", sub: "No PDF yet" };
+      return Promise.all([itpData(a), IF.itpPdfDir(ph, a + " ITP", key, loc).then(function(d){ return list(d, function(e){ return e.kind === "file" && /\.pdf$/i.test(e.name); }); }, function(){ return []; })]).then(function(r){
+        var data = r[0], out = r[1]; out.sort(function(x, y){ return y.name.localeCompare(x.name); });
+        var base = { label: a + " ITP", sub: itpLine(a, data) };
+        if (!data && out[0]) base.sub = "PDF saved";
+        if (a === "Delivery" && data) base.data = data;
+        if (!out[0]) return base;
         return out[0].getFile().then(function(f){
           var d = new Date(f.lastModified);
-          return { label: a + " ITP", sub: isNaN(d.getTime()) ? "Signed off" : "Signed off " + d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) + ", " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }), handle: out[0], saveName: titleOf(a.toUpperCase() + " ITP", out[0].name, f.lastModified) + ".pdf" };
-        }, function(){ return { label: a + " ITP", sub: "Signed off", handle: out[0] }; });
+          base.sub += (isNaN(d.getTime()) ? "" : " · PDF " + d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) + ", " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
+          base.handle = out[0]; return base;
+        }, function(){ base.handle = out[0]; return base; });
       });
-    })).then(function(xs){ if (live()) rows(itpC, xs, ""); });
+    })).then(function(xs){
+      if (!live()) return;
+      rows(itpC, xs, "");
+      // Delivery location: the pin the driver dropped on the plan, with its picture
+      var dd = xs.filter(function(x){ return x.data; })[0], dat = dd && dd.data, snap = dat && dat.locationSnapshot && dat.locationSnapshot.dataUrl ? dat.locationSnapshot.dataUrl : "", pin = dat && dat.deliveryLocationPin && typeof dat.deliveryLocationPin.x === "number" ? dat.deliveryLocationPin : null;
+      dlC.innerHTML = "";
+      if (snap){
+        var im = document.createElement("img"); im.className = "uis-snap"; im.alt = "Delivery location"; im.src = snap;
+        im.addEventListener("click", function(){ fetch(snap).then(function(r){ return r.blob(); }).then(function(b){ if (window.UtzPdfView) UtzPdfView.open(b, "Delivery location.jpg"); }); });
+        dlC.appendChild(im);
+        if (pin){ var cp = document.createElement("p"); cp.className = "uis-sub"; cp.style.marginTop = "6px"; cp.textContent = "Pin dropped at " + Math.round(pin.x) + ", " + Math.round(pin.y); dlC.appendChild(cp); }
+      } else dlC.innerHTML = "<p class=\"uis-empty\">" + (pin ? "Pin dropped (no snapshot) at " + Math.round(pin.x) + ", " + Math.round(pin.y) : "No delivery location yet — the Delivery ITP drops the pin.") + "</p>";
+    });
     // Sub orders
     // (2026-10-04) the item's own folder, UTZLINE Sub Orders\Orders\<Level>\<Room>\<item>\: <item>.json and the files attached to it
     var ordersDirP = IF.ordersDir(ph, key, false, { level: o.level, room: o.room }).then(null, function(){ return null; });
@@ -3094,7 +3231,7 @@ body.plan-fullscreen .plan-viewport{
   if (window.UtzSignIn) return;
   var AWAY_DEFAULT_MS = 10 * 60 * 1000;
   var A = null;                       // the app's adapter (see init)
-  var S = { booted: false, locked: false, gate: null, showing: false, staleName: "", pendingName: "", names: null };
+  var S = { booted: false, locked: false, gate: null, showing: false, staleName: "", pendingName: "", names: null, denied: "" };
 
   function isLight(){
     if (window.__utzSignInForce === true) return true;     // tests
@@ -3105,6 +3242,7 @@ body.plan-fullscreen .plan-viewport{
   // (2026-10-04) Andrew: "on windows nothing asks what user is using when opening the app" -- every device
   // asks now, a PC included (an automated browser, i.e. the tests, is skipped unless a test forces it on).
   function active(){
+    if (window.__utzSignInOff === true) return false;   // (2026-10-06) Machine Schedule: no sign-in at the start -- it asks when something is changed
     if (window.__utzSignInForce === true) return true;
     if (window.__utzSignInForce === false) return false;
     if (isLight()) return true;
@@ -3135,6 +3273,25 @@ body.plan-fullscreen .plan-viewport{
     } catch (x) { return false; }
   }
 
+  // (2026-10-07) Andrew: "when opening any app, your name should only appear if you have permission to be in that app." (shared/users canUse)
+  function noAccess(name){ try { return !!(window.UtzUsers && window.UtzUsers.canUse && !window.UtzUsers.canUse(name)); } catch (e) { return false; } }
+  function showDenied(){
+    if (!document.body){ document.addEventListener("DOMContentLoaded", showDenied, { once: true }); return; }
+    var list = [];
+    Promise.resolve(A && A.readUsers ? A.readUsers().then(function(rows){ return window.UtzUsers ? UtzUsers.filterNames(rows || []) : []; }, function(){ return []; }) : []).then(function(l){ list = l || []; }).then(function(){
+      if (!S.denied) return;
+      S.names = list.slice(); drawGate(list);
+    });
+  }
+  // sign this name out of this app: its cover says it has no access (the names that do have access can still sign in below it)
+  function revoke(name){
+    if (!name) return;
+    S.denied = name; S.staleName = name; S.locked = true; S.pendingName = ""; S.booted = true;
+    writeSession({ name: "", hiddenAt: 0 });
+    try { if (A && A.clear) A.clear(); } catch (e) {}
+    showDenied();
+  }
+
   /* The first call decides (the one boot-time loadDeviceUserName): the saved
      name is honoured only when this page is the same visit coming back (see
      sameVisit), this app session already signed in as that name, and it was
@@ -3142,6 +3299,8 @@ body.plan-fullscreen .plan-viewport{
      Later calls never clear a name somebody just signed in with. */
   function boot(savedName){
     savedName = String(savedName || "");
+    // (2026-10-07) a saved name with no permission for this app is never signed in (from the last-read users on this device)
+    if (savedName && noAccess(savedName)){ S.denied = savedName; S.booted = true; S.locked = true; S.staleName = savedName; writeSession({ name: "", hiddenAt: 0 }); showDenied(); return ""; }
     if (!active()) return savedName;
     if (!S.booted){
       S.booted = true;
@@ -3182,6 +3341,7 @@ body.plan-fullscreen .plan-viewport{
   }
   function drawGate(names){
     ensureStyle();
+    if (S.gate && !S.gate.isConnected && !S.holding){ S.gate = null; } // taken out of the page by something else: draw it afresh
     if (!S.gate){
       var g = document.createElement("div");
       g.id = "utzSignIn"; g.setAttribute("role", "dialog"); g.setAttribute("aria-modal", "true"); g.setAttribute("aria-label", "Sign in");
@@ -3200,8 +3360,8 @@ body.plan-fullscreen .plan-viewport{
     var g2 = S.gate;
     g2.innerHTML = "";
     var card = document.createElement("div"); card.className = "usi-card";
-    var h = document.createElement("h1"); h.textContent = "Who’s using this?";
-    var p = document.createElement("p"); p.textContent = "Pick your name, then enter your PIN.";
+    var h = document.createElement("h1"); h.textContent = S.denied ? "No access to this app" : "Who’s using this?";
+    var p = document.createElement("p"); p.textContent = S.denied ? "Ask an administrator. " + (names.length ? "Anyone else with access can sign in below." : "") : "Pick your name, then enter your PIN.";
     var list = document.createElement("div"); list.className = "usi-list";
     sortNames(names).forEach(function(n){
       var b = document.createElement("button"); b.type = "button"; b.className = "usi-name"; b.textContent = n;
@@ -3243,7 +3403,7 @@ body.plan-fullscreen .plan-viewport{
     S.gate = g; S.holding = true;
   }
   function unlocked(){
-    S.locked = false; S.staleName = ""; S.pendingName = "";
+    S.locked = false; S.staleName = ""; S.pendingName = ""; S.denied = "";
     writeSession({ name: curName(), hiddenAt: 0 });
     hideGate();
     try { if (A && A.refresh) A.refresh(); } catch (e) {}   // redraw the hint + selector for the person now signed in
@@ -3251,8 +3411,11 @@ body.plan-fullscreen .plan-viewport{
   }
   function pick(name){
     if (!A || !A.pickName) return;
+    if (noAccess(name)){ revoke(name); return; }
     S.pendingName = name;
-    Promise.resolve().then(function(){ return A.pickName(name); }).then(function(){
+    // the tap that picked the name is the moment the browser lets the app ask for the Projects folder back (see UtzUsers.ensureAccess)
+    var access = (window.UtzUsers && UtzUsers.ensureAccess) ? UtzUsers.ensureAccess() : Promise.resolve(true);
+    access.then(function(ok){ if (!ok) return Promise.reject(new Error("no folder access")); return A.pickName(name); }).then(function(){
       if (curName() && curName().toLowerCase() === String(name).toLowerCase()) unlocked();
       else S.pendingName = "";
     }, function(){ S.pendingName = ""; });
@@ -3269,13 +3432,15 @@ body.plan-fullscreen .plan-viewport{
      the list yet there is nothing to pick, so it waits (the app's own
      "Set your name" / add-a-name flow works as before). */
   function check(names){
-    if (!active() || !S.booted) return Promise.resolve();
+    // someone is signed in without permission (the names were just (re)read): out they go
+    if (curName() && noAccess(curName())){ revoke(curName()); return Promise.resolve(); }
+    if (!S.denied && (!active() || !S.booted)) return Promise.resolve();
     if (!S.locked) return Promise.resolve();
     if (curName()){ unlocked(); return Promise.resolve(); }     // they signed in another way (added a name)
     var have = Promise.resolve(names && names.length ? names : (A && A.readUsers ? A.readUsers().then(function(rows){ return window.UtzUsers ? UtzUsers.filterNames(rows || []) : (rows || []).map(function(r){ return r.name; }).filter(Boolean); }, function(){ return []; }) : []));
     return have.then(function(list){
       if (!S.locked) return;
-      if (!list.length) { hideGate(); return; }
+      if (!list.length && !S.denied) { hideGate(); return; }
       if (S.showing && S.gate && S.names && S.names.join("\u0001") === list.join("\u0001")) return;
       S.names = list.slice();
       drawGate(list);
@@ -3327,8 +3492,32 @@ body.plan-fullscreen .plan-viewport{
       try { var mo = new MutationObserver(function(){ if (document.body){ mo.disconnect(); drawHold(); } }); mo.observe(document.documentElement, { childList: true }); } catch (e) {}
       document.addEventListener("DOMContentLoaded", drawHold);
     }
-    setTimeout(function(){ if (S.holding) hideGate(); }, 15000);
+    setTimeout(function(){ if (S.holding && !S.denied) hideGate(); }, 15000);
   })();
+
+
+  /* (2026-10-06) Andrew: "sign in display shows only the name, bottom left corner in all instances, text removed". The "Your name & PIN: ..."
+     sentence is hidden and the name dropdown itself moves to a small fixed spot at the bottom left of every screen (it keeps its own handlers). */
+  function nameCorner(){
+    var sel = document.getElementById("identitySelector");
+    if (!sel || !document.body) return;
+    var t = document.getElementById("deviceUserNameText"); if (t) t.style.display = "none";
+    if (!document.getElementById("utzNameCornerStyle")){
+      var st = document.createElement("style"); st.id = "utzNameCornerStyle";
+      st.textContent = "#utzNameCorner{position:fixed;left:12px;bottom:12px;z-index:1;max-width:55vw;pointer-events:none}" +
+        "#utzNameCorner select{pointer-events:auto;font:inherit;font-size:12px;line-height:1.2;padding:5px 9px;min-height:0;width:auto;max-width:100%;border-radius:999px;border:1px solid rgba(128,128,128,.45);background:rgba(128,128,128,.16);color:inherit;opacity:.85;cursor:pointer}" +
+        "#utzNameCorner select:hover,#utzNameCorner select:focus{opacity:1}";
+      document.head.appendChild(st);
+    }
+    var h = document.getElementById("utzNameCorner");
+    if (!h){ h = document.createElement("div"); h.id = "utzNameCorner"; document.body.appendChild(h); }
+    if (sel.parentNode !== h){
+      var row = sel.closest(".logo-setting-row, .identity-gate-row, .identity-row");
+      h.appendChild(sel);
+      if (row && !row.querySelector("select, button, img, input") && !(row.textContent || "").replace(/\s+/g, "")) row.style.display = "none";
+    }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", nameCorner); else setTimeout(nameCorner, 0);
 
   window.UtzSignIn = {
     init: function(adapter){ A = adapter || null; if (S.booted && S.locked) check(); },
@@ -3337,6 +3526,8 @@ body.plan-fullscreen .plan-viewport{
     lock: lock,
     isLight: isLight,                 // tablet or phone (also used to hide PC-only bits)
     active: active,                   // whether this device asks who is using it (every device now)
+    revoke: revoke,                   // (2026-10-07) sign a name out of this app: no permission for it
+    isDenied: function(){ return S.denied; },
     isLocked: function(){ return !!S.locked; },
     isShowing: function(){ return !!S.showing; },
     _away: function(){ return awayMs(); }
@@ -3364,6 +3555,24 @@ body.plan-fullscreen .plan-viewport{
    UtzUsers.init({ appCode, getRoot, getName, readUsers, writeUsers, toast, refresh })   once per app (refresh: re-list the names)
    UtzUsers.filterNames(rows) -> names for this app                         UtzUsers.APP_CODES -> [[code, label], ...]
    UtzUsers.needsApproval(rows) -> bool (sync; admins read at init)        UtzUsers.request({ name, pin, showInApps }) -> Promise
+   3. (2026-10-07) Andrew: "give me the option as admin to pick what apps are visible to what department personnel as default" -- in the Users
+      screen each department has an Apps list (utzline-department-apps.json at the Projects root: { "departments": { "draftingOffice": ["Drafting",
+      "Viewer"] } }). A name shows in the apps of its department(s) (the union of those with a list) PLUS any apps ticked on the name itself (per-person
+      extras); a department with no list and no extras restricts nobody (as before); administrators and the name signed in still show everywhere.
+   4. (2026-10-07) STRICT: Andrew: "when opening any app, your name should only appear if you have permission to be in that app."
+      A name is allowed in an app only if its own ticked apps (ShowInApps) or its departments' default apps include it, or it is an administrator.
+        - a row with nothing ticked and no department default is listed NOWHERE (was: everywhere);
+        - a department with no Apps list gives no apps (was: unrestricted);
+        - the name signed in on this device is no longer an exception: with no permission for the app being opened it is signed out and the
+          sign-in cover says "No access to this app. Ask an administrator" (UtzSignIn.revoke);
+        - kept so nobody is locked out: while utzline-users.csv has no administrator yet (a new setup) everyone is allowed, and until the users /
+          department / department-apps files have been read once on this device (never read, no last-read copy) the old rule applies;
+        - works offline: the last-read users, departments, department apps and administrators are kept on this device (localStorage) and used
+          whenever the folder can't be read;
+        - the first time an administrator opens an app after this rule, a note says "N names have no app access set. Open Users to assign."
+      Nothing is deleted -- this only changes what is listed / who may sign in.
+   UtzUsers.canUse(name) -> bool: may this name use THIS app?                       UtzUsers.noAccessNames(rows) -> names with no access anywhere
+   UtzUsers.defaultApps(name) -> the department default (codes) or null           UtzUsers.refreshDefaults() -> Promise
    UtzUsers.poke()  -- look for requests now (the app calls it after its names list is (re)read)
    UtzUsers.openUsers() -- the Users screen (administrator PIN): administrators, apps per name, names waiting
    Plain ES5. Needs UtzPin (shared/admin-gate) for the PIN scrambling. */
@@ -3373,7 +3582,7 @@ body.plan-fullscreen .plan-viewport{
   var APP_CODES = [
     ["SiteMeasure", "Site Measure"], ["Viewer", "Viewer"], ["Projects", "Projects"], ["Scheduler", "Scheduler"],
     ["MachineSchedule", "Machine Schedule"], ["SolidSurfaceSchedule", "Solid Surface Schedule"],
-    ["ManufactureITP", "Manufacture ITP"], ["DeliveryITP", "Delivery ITP"], ["InstallITP", "Install ITP"]
+    ["ManufactureITP", "Manufacture ITP"], ["DeliveryITP", "Delivery ITP"], ["InstallITP", "Install ITP"], ["SubOrders", "Sub Orders"], ["ShopDrawings", "Shop Drawings"], ["Drafting", "Drafting Schedule"], ["DollarSummary", "$ Summary (finance)"]
   ];
   var DEFAULT_ADMINS = ["Andrew Utz"], ADMIN_FILE = "utzline-admins.json", PENDING_FILE = "utzline-users-pending.json";
   var cfg = null, admins = DEFAULT_ADMINS.slice(), adminsAt = 0, busy = false, shownFor = {};
@@ -3405,19 +3614,174 @@ body.plan-fullscreen .plan-viewport{
       var j = JSON.parse(t), a = Array.isArray(j) ? j : (j && j.admins);
       a = Array.isArray(a) ? a.map(function(x){ return String(x || "").trim(); }).filter(Boolean) : [];
       admins = a.length ? a : DEFAULT_ADMINS.slice();
-    }).catch(function(){ admins = DEFAULT_ADMINS.slice(); }).then(function(){ adminsAt = Date.now(); return admins; });
+    }).catch(function(){ /* unreadable: keep the last-read list (else the default) */ if (!cache.loaded || !admins.length) admins = DEFAULT_ADMINS.slice(); }).then(function(){ adminsAt = Date.now(); saveCache(); return admins; });
   }
 
   // ---- 1. which names this app lists ----
-  function showsHere(row){
-    if (!row || !row.name) return false;
-    var cs = codesOf(row);
-    if (!cs.length || isAdminName(row.name) || low(row.name) === low(me())) return true;
-    var code = cfg && cfg.appCode;
-    if (!code) return true;
-    return cs.some(function(c){ return sameApp(c, code); });
+  // (2026-10-07) the last-read users / departments / department apps / administrators are kept on this device, so a folder that can't be read
+  // (offline, a permission lapse) still gives the same answer as the last time it could
+  var cache = { rows: null, loaded: false }, cacheKeyNow = "";
+  function cacheKey(){ var r = root(); return "utzline-users-cache:" + ((r && r.name) || ""); }
+  function loadCache(){
+    var k = cacheKey(); if (cacheKeyNow === k && cache.loaded) return; // once per folder
+    cacheKeyNow = k; cache.loaded = true;
+    try{
+      var j = JSON.parse(localStorage.getItem(k) || "null");
+      if (!j) return;
+      if (Array.isArray(j.rows)) cache.rows = j.rows;
+      if (j.depts && typeof j.depts === "object" && !deptCache){ deptCache = j.depts; deptAt = 0; }
+      if (j.deptApps && typeof j.deptApps === "object" && !deptAppsRead){ deptApps = j.deptApps; deptAppsRead = true; deptAppsAt = 0; }
+      if (Array.isArray(j.admins) && j.admins.length) admins = j.admins.slice();
+    }catch(e){}
   }
-  function filterNames(rows){ return (rows || []).filter(showsHere).map(function(r){ return r.name; }).filter(Boolean); }
+  function saveCache(){
+    try{ localStorage.setItem(cacheKey(), JSON.stringify({ rows: cache.rows, depts: deptCache, deptApps: deptAppsRead ? deptApps : null, admins: admins, at: Date.now() })); }catch(e){}
+  }
+  function rememberRows(rows){
+    if (!Array.isArray(rows)) return;
+    cache.rows = rows.filter(function(r){ return r && r.name; }).map(function(r){ return { name: r.name, showInApps: r.showInApps || "" }; });
+    saveCache();
+  }
+  function hasAdmin(rows){ return (rows || []).some(function(r){ return r && isAdminName(r.name); }); }
+  function appMatch(list, code){ return (list || []).some(function(c){ return sameApp(c, code); }); }
+  // may this name use THIS app? rows: the names just read (else the last-read ones)
+  function canUse(name, rows){
+    var code = cfg && cfg.appCode; if (!code || !name) return true;
+    loadCache();
+    rows = rows || cache.rows;
+    if (!rows) return true;                                    // the names have never been read on this device: nothing to judge by
+    if (!hasAdmin(rows)) return true;                          // a new setup (no administrator yet): nobody is locked out
+    if (isAdminName(name)) return true;
+    var row = rows.filter(function(r){ return r && low(r.name) === low(name); })[0];
+    var own = row ? codesOf(row) : [];
+    if (!deptCache || !deptAppsRead) return own.length ? appMatch(own, code) : true; // departments not read yet (first run, nothing remembered): old rule
+    return appMatch(own, code) || appMatch(defaultApps(name) || [], code);
+  }
+  function showsHere(row, rows){ return !!(row && row.name) && canUse(row.name, rows); }
+  function filterNames(rows){
+    var list = (rows || []);
+    loadCache();
+    if (Array.isArray(rows) && rows.length) rememberRows(rows);
+    else if (cache.rows && cache.rows.length) list = cache.rows;   // the file couldn't be read just now (offline): the last-read names
+    var out = list.filter(function(r){ return showsHere(r, list); }).map(function(r){ return r.name; }).filter(Boolean);
+    try{ maybeNotice(list); }catch(e){}
+    return out;
+  }
+  // names that no app lists: nothing ticked for the name and nothing from its departments (administrators excluded; none while there is no administrator)
+  function noAccessNames(rows){
+    rows = rows || cache.rows || [];
+    if (!hasAdmin(rows) || !deptCache || !deptAppsRead) return [];
+    return rows.filter(function(r){ return r && r.name && !isAdminName(r.name) && !codesOf(r).length && !(defaultApps(r.name) || []).length; }).map(function(r){ return r.name; });
+  }
+  // the first-run note, for an administrator only (until they dismiss it or open Users)
+  var NOTICE_KEY = "utzline-users-noaccess-note:";
+  function maybeNotice(rows){
+    if (!document.body || !isAdminName(me())) return;
+    var k = NOTICE_KEY + cacheKey(), names = noAccessNames(rows);
+    var bar = document.getElementById("utzNoAccessNote");
+    if (!names.length){ if (bar) bar.remove(); return; }
+    try{ if (localStorage.getItem(k)) return; }catch(e){}
+    var msg = names.length + (names.length === 1 ? " name has" : " names have") + " no app access set. Open Users to assign.";
+    if (bar){ bar.querySelector("span").textContent = msg; return; }
+    css();
+    bar = document.createElement("div"); bar.id = "utzNoAccessNote"; bar.className = "uzu-note"; bar.setAttribute("role", "status");
+    bar.innerHTML = '<span></span><button type="button" data-a="open">Open Users</button><button type="button" data-a="dismiss">Dismiss</button>';
+    bar.querySelector("span").textContent = msg;
+    bar.addEventListener("click", function(e){
+      var b = e.target.closest && e.target.closest("[data-a]"); if (!b) return;
+      try{ localStorage.setItem(k, "1"); }catch(x){}
+      bar.remove();
+      if (b.getAttribute("data-a") === "open") openManage();
+    });
+    document.body.appendChild(bar);
+  }
+
+  // ---- departments (2026-10-06) ----
+  // Andrew: "pick a department when a person is created; admin can move them into other or multiple departments with a dropdown".
+  // utzline-departments.json at the Projects root: { "people": { "<name>": ["manufacture", "install"] } } -- the six groups a rework can be
+  // flagged to (so a rework flagged to one reaches everyone in it) plus Drafting Office, Project Managers and Site Managers. Only this module reads / writes it.
+  var DEPARTMENTS = [["delivery", "Delivery"], ["draftingOffice", "Drafting Office"], ["factoryManagers", "Factory managers"], ["install", "Install"], ["machineShop", "Machine shop"], ["manufacture", "Manufacture"], ["projectManagers", "Project Managers"], ["siteManagers", "Site Managers"], ["solidSurface", "Solid surface"]]; // (2026-10-06) Andrew: add Drafting Office, Project Managers and Site Managers, in alphabetical order
+  var DEPT_FILE = "utzline-departments.json", deptCache = null, deptAt = 0;
+  function readDepts(force){
+    var r = root(); if (!r) return Promise.resolve({});
+    if (!force && deptCache && Date.now() - deptAt < 30000) return Promise.resolve(deptCache);
+    return readText(r, DEPT_FILE).then(function(t){ var j = JSON.parse(t); return (j && j.people && typeof j.people === "object") ? j.people : {}; }, function(err){
+      if (err && (err.name === "NotFoundError" || /not ?found/i.test(String(err.message || "")))) return {};
+      throw err; // unreadable: never overwrite it
+    }).then(function(m){ deptCache = m; deptAt = Date.now(); saveCache(); return m; });
+  }
+  function validDepts(codes){ return (codes || []).filter(function(c){ return DEPARTMENTS.some(function(d){ return d[0] === c; }); }); }
+  function departmentsOf(name){
+    return readDepts().then(function(m){
+      var k = Object.keys(m).filter(function(n){ return low(n) === low(name); })[0];
+      return k ? validDepts(m[k]) : [];
+    }, function(){ return []; });
+  }
+  // ---- department default apps (2026-10-07) ----
+  var DEPT_APPS_FILE = "utzline-department-apps.json", deptApps = {}, deptAppsAt = 0, deptAppsRead = false;
+  function readDeptApps(force){
+    var r = root(); if (!r) return Promise.resolve(deptApps);
+    if (!force && Date.now() - deptAppsAt < 30000) return Promise.resolve(deptApps);
+    return readText(r, DEPT_APPS_FILE).then(function(t){
+      var j = JSON.parse(t), m = (j && j.departments && typeof j.departments === "object") ? j.departments : {}, out = {};
+      Object.keys(m).forEach(function(k){
+        if (!DEPARTMENTS.some(function(d){ return d[0] === k; })) return;
+        var list = (Array.isArray(m[k]) ? m[k] : []).filter(function(c){ return APP_CODES.some(function(p){ return p[0] === c; }); });
+        if (list.length) out[k] = list;
+      });
+      return out;
+    }, function(err){
+      if (err && (err.name === "NotFoundError" || /not ?found/i.test(String(err.message || "")))) return {};
+      throw err; // unreadable: never overwrite it
+    }).then(function(m){ deptApps = m; deptAppsAt = Date.now(); deptAppsRead = true; saveCache(); return m; });
+  }
+  function writeDeptApps(map){
+    var r = root(); if (!r) return Promise.reject(new Error("No folder"));
+    var clean = {}; Object.keys(map).forEach(function(k){ if (map[k] && map[k].length) clean[k] = map[k].slice(); });
+    return writeText(r, DEPT_APPS_FILE, JSON.stringify({ departments: clean, updatedBy: me(), updatedAt: new Date().toISOString() }, null, 1)).then(function(){ deptApps = clean; deptAppsAt = Date.now(); deptAppsRead = true; saveCache(); });
+  }
+  // the apps a name shows in by default (the union of its departments' lists), or null when none of its departments has a list (everywhere)
+  function defaultApps(name){
+    if (!deptCache) return null;
+    var k = Object.keys(deptCache).filter(function(n){ return low(n) === low(name); })[0];
+    var depts = k ? validDepts(deptCache[k]) : [], out = null;
+    depts.forEach(function(d){ if (deptApps[d] && deptApps[d].length){ out = out || []; deptApps[d].forEach(function(c){ if (out.indexOf(c) === -1) out.push(c); }); } });
+    return out;
+  }
+  function refreshDefaults(){
+    var had = JSON.stringify([deptApps, deptCache]);
+    return Promise.all([readDepts(true).catch(function(){ return deptCache || {}; }), readDeptApps(true).catch(function(){ return deptApps; })]).then(function(){
+      if (had !== JSON.stringify([deptApps, deptCache]) && cfg && cfg.refresh) try{ cfg.refresh(); }catch(e){} // re-list the names
+    });
+  }
+  function setDepartments(name, codes){
+    var r = root(); if (!r || !name) return Promise.resolve(false);
+    return readDepts(true).then(function(m){
+      var k = Object.keys(m).filter(function(n){ return low(n) === low(name); })[0] || name;
+      m[k] = validDepts(codes);
+      return writeText(r, DEPT_FILE, JSON.stringify({ people: m }, null, 1)).then(function(){ deptCache = m; deptAt = Date.now(); return true; });
+    });
+  }
+  // the tick list: resolves the ticked codes (Save, maybe none) or null (Cancel)
+  function pickDepartments(initial, name){
+    css();
+    return new Promise(function(resolve){
+      var bd = document.createElement("div"); bd.className = "uzu-bd";
+      bd.innerHTML = '<div class="uzu" role="dialog" aria-label="Departments"><h2>Department</h2><p></p><div class="uzu-apps"></div><div class="uzu-btns"><button type="button" data-a="cancel">Cancel</button><button type="button" class="uzu-ok" data-a="save">Save</button></div></div>';
+      bd.querySelector("p").textContent = (name ? "“" + name + "” — " : "") + "which department(s) are they in? Reworks flagged to a department are shown to its people when they sign in.";
+      var box = bd.querySelector(".uzu-apps");
+      DEPARTMENTS.forEach(function(d){
+        var l = document.createElement("label"), cb = document.createElement("input"); cb.type = "checkbox"; cb.value = d[0]; cb.checked = (initial || []).indexOf(d[0]) !== -1;
+        l.appendChild(cb); l.appendChild(document.createTextNode(d[1])); box.appendChild(l);
+      });
+      bd.addEventListener("click", function(e){
+        var b = e.target.closest && e.target.closest("[data-a]"); if (!b) return;
+        var picked = Array.prototype.slice.call(box.querySelectorAll("input:checked")).map(function(c){ return c.value; });
+        bd.remove(); resolve(b.getAttribute("data-a") === "save" ? picked : null);
+      });
+      document.body.appendChild(bd);
+    });
+  }
 
   // ---- 2. approval ----
   function needsApproval(rows){
@@ -3435,7 +3799,7 @@ body.plan-fullscreen .plan-viewport{
   function request(o){
     return readPending().then(function(list){
       list = list.filter(function(x){ return !(x && !x.decision && low(x.name) === low(o.name)); }); // a second try replaces the first (PIN may have changed)
-      list.push({ name: o.name, pin: window.UtzPin ? UtzPin.stored(o.pin) : o.pin, showInApps: o.showInApps || "", app: (cfg && cfg.appCode) || "",
+      list.push({ name: o.name, pin: window.UtzPin ? UtzPin.stored(o.pin) : o.pin, showInApps: o.showInApps || "", departments: validDepts(o.departments), app: (cfg && cfg.appCode) || "",
         at: new Date().toISOString(), device: (navigator.userAgent || "").replace(/^.*?\(([^)]*)\).*$/, "$1").slice(0, 60) });
       return writePending(list);
     });
@@ -3444,6 +3808,8 @@ body.plan-fullscreen .plan-viewport{
     if (document.getElementById("utzUsersCss")) return;
     var st = document.createElement("style"); st.id = "utzUsersCss";
     st.textContent = [
+      ".uzu-note{position:fixed;left:12px;right:12px;top:8px;z-index:2147481000;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;border-radius:12px;background:#7a2b2b;color:#fff;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.35)}" +
+      ".uzu-note span{flex:1 1 220px}.uzu-note button{font:inherit;font-size:13px;padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.6);background:transparent;color:#fff;cursor:pointer}" +
       ".uzu-bd{position:fixed;inset:0;z-index:2147482000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;}",
       ".uzu{background:var(--panel,var(--surface-1,#1c2125));color:var(--text,var(--text-primary,#eee));border:1px solid var(--border,#444);border-radius:12px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:16px 18px;font-size:14.5px;}",
       ".uzu h2{margin:0 0 4px;font-size:18px;}.uzu p{margin:4px 0 10px;color:var(--muted,#aab);}",
@@ -3466,7 +3832,7 @@ body.plan-fullscreen .plan-viewport{
     return new Promise(function(resolve){
       var bd = document.createElement("div"); bd.className = "uzu-bd";
       var have = codesOf(req);
-      bd.innerHTML = '<div class="uzu" role="dialog"><h2>New name to approve</h2><p></p><div class="uzu-apps"></div>' +
+      bd.innerHTML = '<div class="uzu" role="dialog"><h2>New name to approve</h2><p></p><div class="uzu-apps"></div><h3>Department</h3><div class="uzu-apps uzu-depts"></div>' +
         '<div class="uzu-btns"><button type="button" data-a="later">Later</button><button type="button" class="uzu-no" data-a="decline">Decline</button><button type="button" class="uzu-ok" data-a="approve">Approve</button></div></div>';
       var when = ""; try{ when = new Date(req.at).toLocaleString(); }catch(e){}
       var appLabel = (APP_CODES.filter(function(p){ return p[0] === req.app; })[0] || [0, req.app || "an app"])[1];
@@ -3477,10 +3843,16 @@ body.plan-fullscreen .plan-viewport{
         cb.checked = have.some(function(c){ return sameApp(c, p[0]); });
         l.appendChild(cb); l.appendChild(document.createTextNode(p[1])); box.appendChild(l);
       });
+      var dbox = bd.querySelector(".uzu-depts");
+      DEPARTMENTS.forEach(function(d){
+        var l = document.createElement("label"), cb = document.createElement("input"); cb.type = "checkbox"; cb.value = d[0]; cb.checked = validDepts(req.departments).indexOf(d[0]) !== -1;
+        l.appendChild(cb); l.appendChild(document.createTextNode(d[1])); dbox.appendChild(l);
+      });
       bd.addEventListener("click", function(e){
         var b = e.target.closest && e.target.closest("[data-a]"); if (!b) return;
         var apps = Array.prototype.slice.call(box.querySelectorAll("input:checked")).map(function(c){ return c.value; });
-        bd.remove(); resolve({ action: b.getAttribute("data-a"), apps: apps });
+        var depts = Array.prototype.slice.call(dbox.querySelectorAll("input:checked")).map(function(c){ return c.value; });
+        bd.remove(); resolve({ action: b.getAttribute("data-a"), apps: apps, departments: depts });
       });
       document.body.appendChild(bd);
     });
@@ -3495,7 +3867,7 @@ body.plan-fullscreen .plan-viewport{
       return cfg.readUsers().then(function(rows){
         if (rows.some(function(r){ return low(r.name) === low(cur.name); })) return done().then(function(){ return "exists"; });
         rows.push({ name: cur.name, pin: cur.pin, showInApps: d.apps.join(";") });
-        return cfg.writeUsers(rows).then(done).then(function(){ return "approved"; });
+        return cfg.writeUsers(rows).then(function(){ return setDepartments(cur.name, d.departments || cur.departments || []).then(null, function(){ return false; }); }).then(done).then(function(){ return "approved"; });
       });
     });
   }
@@ -3532,27 +3904,97 @@ body.plan-fullscreen .plan-viewport{
     var r = root();
     return writeText(r, ADMIN_FILE, JSON.stringify({ admins: list, updatedBy: me(), updatedAt: new Date().toISOString() }, null, 1)).then(function(){ admins = list.slice(); adminsAt = Date.now(); });
   }
+  var REMOVED_FILE = "utzline-users-removed.json";
+  // takes the row out of utzline-users.csv after copying it (and the person's departments) into utzline-users-removed.json, written FIRST
+  function removeUser(name){
+    var r = root(); if (!r) return Promise.resolve(false);
+    return cfg.readUsers().then(function(fresh){
+      fresh = fresh || [];
+      var row = fresh.filter(function(x){ return low(x.name) === low(name); })[0];
+      if (!row) return false;
+      return Promise.all([readText(r, REMOVED_FILE).then(function(t){ var j = JSON.parse(t); return Array.isArray(j) ? j : (j && Array.isArray(j.removed) ? j.removed : []); }, function(err){
+        if (err && (err.name === "NotFoundError" || /not ?found/i.test(String(err.message || "")))) return [];
+        throw err; // unreadable: never overwritten
+      }), departmentsOf(name)]).then(function(two){
+        var list = two[0];
+        list.push({ name: row.name, pin: row.pin, showInApps: row.showInApps || "", departments: two[1], removedBy: me(), removedAt: new Date().toISOString() });
+        return writeText(r, REMOVED_FILE, JSON.stringify({ removed: list }, null, 1));
+      }).then(function(){
+        return cfg.writeUsers(fresh.filter(function(x){ return low(x.name) !== low(name); }));
+      }).then(function(){ return true; });
+    });
+  }
   function openManage(){
     if (!cfg || !root()) return;
     var gate = window.UtzAdminGate ? UtzAdminGate.require(cfg.getRoot, "Managing names and administrators needs an administrator's PIN.") : Promise.resolve(true);
     return gate.then(function(ok){
       if (!ok) return;
       adminsAt = 0;
-      return Promise.all([cfg.readUsers(), loadAdmins(), readPending().catch(function(){ return []; })]).then(function(r){ showManage(r[0] || [], r[2] || []); });
+      return Promise.all([cfg.readUsers(), loadAdmins(), readPending().catch(function(){ return []; }), readDepts(true).catch(function(){ return {}; }), readDeptApps(true).catch(function(){ return deptApps; })]).then(function(r){ showManage(r[0] || [], r[2] || [], r[3] || {}); });
     }).catch(function(err){ console.error("Opening Users failed:", err); toast("Couldn't read the names list just now — try again in a moment."); });
   }
-  function showManage(rows, pending){
+  function showManage(rows, pending, deptMap){
     css();
     var bd = document.createElement("div"); bd.className = "uzu-bd";
-    bd.innerHTML = '<div class="uzu uzu-wide" role="dialog" aria-label="Users"><h2>Users</h2><p>Tick who is an <b>administrator</b> (they can approve new names, change the Projects folder and open this screen), and the apps each name shows in. Nobody is removed here.</p>' +
+    bd.innerHTML = '<div class="uzu uzu-wide" role="dialog" aria-label="Users"><h2>Users</h2><p>Tick who is an <b>administrator</b> (they can approve new names, change the Projects folder and open this screen), and the extra apps each name shows in (on top of its department\'s). Nobody is removed here.</p>' +
+      '<div class="uzu-dapps"><h3>Default apps for each department</h3><p class="uzu-sub">Tick the apps a department\'s people see their name in. Apps ticked on a name below are added to its department\'s; a department with nothing ticked restricts nobody.</p><div class="uzu-dapps-list"></div></div>' +
       '<div class="uzu-list"></div><div class="uzu-wait"></div><p class="uzu-err"></p><div class="uzu-btns"><button type="button" data-a="cancel">Cancel</button><button type="button" class="uzu-ok" data-a="save">Save</button></div></div>';
     var listEl = bd.querySelector(".uzu-list"), errEl = bd.querySelector(".uzu-err");
+    // (2026-10-07) default apps per department
+    var dappsEl = bd.querySelector(".uzu-dapps-list");
+    DEPARTMENTS.forEach(function(d){
+      var row = document.createElement("div"); row.className = "uzu-user uzu-dapp-row"; row.setAttribute("data-dept", d[0]);
+      row.innerHTML = '<div class="uzu-user-head"><b></b><button type="button" class="uzu-apps-btn">Apps</button></div><p class="uzu-sub"></p><div class="uzu-user-apps" hidden></div>';
+      row.querySelector("b").textContent = d[1];
+      var box = row.querySelector(".uzu-user-apps"), sub = row.querySelector(".uzu-sub"), btn = row.querySelector("button"), have = deptApps[d[0]] || [];
+      APP_CODES.forEach(function(p){
+        var l = document.createElement("label"), cb = document.createElement("input"); cb.type = "checkbox"; cb.value = p[0]; cb.checked = have.indexOf(p[0]) !== -1;
+        l.appendChild(cb); l.appendChild(document.createTextNode(p[1])); box.appendChild(l);
+      });
+      function sum(){
+        var on = Array.prototype.slice.call(box.querySelectorAll("input:checked")).map(function(c){ return (APP_CODES.filter(function(p){ return p[0] === c.value; })[0] || [0, c.value])[1]; });
+        sub.textContent = on.length ? "Default: " + on.join(", ") : "No default set: shows in every app";
+      }
+      btn.addEventListener("click", function(){ box.hidden = !box.hidden; btn.textContent = box.hidden ? "Apps" : "Hide apps"; });
+      row.addEventListener("change", function(){ sum(); if (bd.__refreshPeople) bd.__refreshPeople(); }); sum();
+      dappsEl.appendChild(row);
+    });
+    function liveDeptApps(){
+      var m = {}; Array.prototype.forEach.call(dappsEl.querySelectorAll(".uzu-dapp-row"), function(r){ m[r.getAttribute("data-dept")] = Array.prototype.slice.call(r.querySelectorAll("input:checked")).map(function(c){ return c.value; }); });
+      return m;
+    }
+    // (2026-10-06) Andrew: "this needs the add user option" -- an administrator adds a name here: the name, and optionally a 4-digit PIN (left blank, the
+    // person is asked to choose one the first time they sign in). It is written at once; the dialog reopens with the new person in the list to tick
+    // administrator / apps / departments.
+    var addEl = document.createElement("div"); addEl.className = "uzu-add";
+    addEl.innerHTML = '<button type="button" class="uzu-apps-btn uzu-add-btn">+ Add user</button><div class="uzu-add-form" hidden style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;"><input type="text" class="uzu-add-name" maxlength="40" placeholder="Name" style="flex:1;min-width:160px;font:inherit;padding:8px 10px;border-radius:8px;"><input type="password" class="uzu-add-pin" inputmode="numeric" maxlength="4" placeholder="PIN (optional)" style="width:130px;font:inherit;padding:8px 10px;border-radius:8px;"><button type="button" class="uzu-apps-btn uzu-add-go">Add</button></div>';
+    var addForm = addEl.querySelector(".uzu-add-form"); addForm.hidden = true; addForm.style.display = "none";
+    addEl.querySelector(".uzu-add-btn").addEventListener("click", function(){ addForm.hidden = !addForm.hidden; addForm.style.display = addForm.hidden ? "none" : "flex"; if (!addForm.hidden) addEl.querySelector(".uzu-add-name").focus(); });
+    addEl.querySelector(".uzu-add-go").addEventListener("click", function(){
+      var nm = addEl.querySelector(".uzu-add-name").value.trim().replace(/\s+/g, " "), pin = addEl.querySelector(".uzu-add-pin").value.trim();
+      if (!nm){ errEl.textContent = "Type the name to add."; return; }
+      if (pin && !/^\d{4}$/.test(pin)){ errEl.textContent = "A PIN is four digits (or leave it blank)."; return; }
+      if (rows.some(function(r){ return r && low(r.name) === low(nm); })){ errEl.textContent = "“" + nm + "” is already in the list."; return; }
+      errEl.textContent = "Adding…";
+      cfg.readUsers().then(function(fresh){
+        fresh = fresh || [];
+        if (fresh.some(function(r){ return low(r.name) === low(nm); })) throw Object.assign(new Error("exists"), { exists: true });
+        fresh.push({ name: nm, pin: pin ? (window.UtzPin ? UtzPin.stored(pin) : pin) : "", showInApps: "" });
+        return cfg.writeUsers(fresh);
+      }).then(function(){
+        bd.remove(); if (cfg.refresh) try{ cfg.refresh(); }catch(e){}
+        toast("“" + nm + "” added" + (pin ? "." : " — they choose a PIN the first time they sign in."));
+        adminsAt = 0; // already past the administrator PIN: straight back to the list
+        return Promise.all([cfg.readUsers(), loadAdmins(), readPending().catch(function(){ return []; }), readDepts(true).catch(function(){ return {}; })]).then(function(r){ showManage(r[0] || [], r[2] || [], r[3] || {}); });
+      }, function(err){ errEl.textContent = err && err.exists ? "“" + nm + "” is already in the list." : "Couldn't add the name just now — try again in a moment."; if (!(err && err.exists)) console.error("Adding a user failed:", err); });
+    });
+    listEl.parentNode.insertBefore(addEl, listEl);
     var sorted = rows.filter(function(r){ return r && r.name; }).slice().sort(function(a, b){ return low(a.name) < low(b.name) ? -1 : low(a.name) > low(b.name) ? 1 : 0; });
     sorted.forEach(function(r){
       var row = document.createElement("div"); row.className = "uzu-user"; row.setAttribute("data-name", r.name);
       var have = codesOf(r);
-      row.innerHTML = '<div class="uzu-user-head"><b></b><label><input type="checkbox" class="uzu-admin"> Administrator</label><button type="button" class="uzu-apps-btn"></button></div>' +
-        '<p class="uzu-sub"></p><div class="uzu-user-apps" hidden></div>';
+      row.innerHTML = '<div class="uzu-user-head"><b></b><label><input type="checkbox" class="uzu-admin"> Administrator</label><button type="button" class="uzu-apps-btn"></button><button type="button" class="uzu-apps-btn uzu-dept-btn"></button></div>' +
+        '<p class="uzu-sub"></p><div class="uzu-user-apps" hidden></div><div class="uzu-user-apps uzu-user-depts" hidden></div>';
       row.querySelector("b").textContent = r.name;
       row.querySelector(".uzu-admin").checked = isAdminName(r.name);
       var appsEl = row.querySelector(".uzu-user-apps"), subEl = row.querySelector(".uzu-sub"), btn = row.querySelector(".uzu-apps-btn");
@@ -3563,13 +4005,47 @@ body.plan-fullscreen .plan-viewport{
       });
       function summary(){
         var on = Array.prototype.slice.call(appsEl.querySelectorAll("input:checked")).map(function(c){ return (APP_CODES.filter(function(p){ return p[0] === c.value; })[0] || [0, c.value])[1]; });
-        subEl.textContent = row.querySelector(".uzu-admin").checked ? "Administrator: shows in every app" : (on.length ? "Shows in: " + on.join(", ") : "No apps ticked: shows in every app");
+        var dn = Array.prototype.slice.call(row.querySelectorAll(".uzu-user-depts input:checked")).map(function(c){ return c.value; }), dm = liveDeptApps(), dd = [];
+        dn.forEach(function(c){ (dm[c] || []).forEach(function(a){ if (dd.indexOf(a) === -1) dd.push(a); }); });
+        var ddNames = dd.map(function(c){ return (APP_CODES.filter(function(p){ return p[0] === c; })[0] || [0, c])[1]; });
+        subEl.textContent = row.querySelector(".uzu-admin").checked ? "Administrator: shows in every app"
+          : (ddNames.length ? "Department: " + ddNames.join(", ") + (on.length ? " + extra: " + on.join(", ") : "")
+          : (on.length ? "Shows in: " + on.join(", ") : "No apps ticked: shows in every app"));
       }
-      btn.textContent = "Apps";
-      btn.addEventListener("click", function(){ appsEl.hidden = !appsEl.hidden; btn.textContent = appsEl.hidden ? "Apps" : "Hide apps"; });
+      btn.textContent = "Extra apps"; btn.title = "Apps this name shows in on top of its department's";
+      btn.addEventListener("click", function(){ appsEl.hidden = !appsEl.hidden; btn.textContent = appsEl.hidden ? "Extra apps" : "Hide apps"; });
+      // (2026-10-06) the person's departments (any number)
+      var deptEl = row.querySelector(".uzu-user-depts"), deptBtn = row.querySelector(".uzu-dept-btn"), haveDept = (deptMap && Object.keys(deptMap).filter(function(n){ return low(n) === low(r.name); }).map(function(n){ return validDepts(deptMap[n]); })[0]) || [];
+      DEPARTMENTS.forEach(function(d){
+        var l = document.createElement("label"), cb = document.createElement("input"); cb.type = "checkbox"; cb.value = d[0]; cb.checked = haveDept.indexOf(d[0]) !== -1;
+        l.appendChild(cb); l.appendChild(document.createTextNode(d[1])); deptEl.appendChild(l);
+      });
+      function deptLabel(){
+        var on = Array.prototype.slice.call(deptEl.querySelectorAll("input:checked")).map(function(c){ return (DEPARTMENTS.filter(function(d){ return d[0] === c.value; })[0] || [0, c.value])[1]; });
+        deptBtn.textContent = "Department: " + (on.length ? on.join(", ") : "none") + (deptEl.hidden ? " ▾" : " ▴");
+      }
+      deptBtn.addEventListener("click", function(){ deptEl.hidden = !deptEl.hidden; deptLabel(); });
+      deptEl.addEventListener("change", deptLabel); deptLabel();
       row.addEventListener("change", summary); summary();
+      // (2026-10-06) Andrew: "remove user (but don't lose any history)" -- the name leaves the sign-in list; the row is kept in utzline-users-removed.json
+      // (PIN hash, apps, departments, who removed it and when) and every event already written keeps the name it was written under
+      var rmBtn = document.createElement("button"); rmBtn.type = "button"; rmBtn.className = "uzu-apps-btn uzu-rm"; rmBtn.textContent = "Remove";
+      rmBtn.addEventListener("click", function(){
+        if (isAdminName(r.name)){ errEl.textContent = "“" + r.name + "” is an administrator — untick Administrator and Save first."; return; }
+        if (!window.confirm("Remove “" + r.name + "” from the sign-in list?\n\nTheir history stays exactly as it is (everything they logged keeps their name). They can be added again later.")) return;
+        errEl.textContent = "Removing…";
+        removeUser(r.name).then(function(ok){
+          if (!ok){ errEl.textContent = "“" + r.name + "” was already gone."; return; }
+          bd.remove(); if (cfg.refresh) try{ cfg.refresh(); }catch(e){}
+          toast("“" + r.name + "” removed — their history is untouched.");
+          adminsAt = 0;
+          return Promise.all([cfg.readUsers(), loadAdmins(), readPending().catch(function(){ return []; }), readDepts(true).catch(function(){ return {}; })]).then(function(r2){ showManage(r2[0] || [], r2[2] || [], r2[3] || {}); });
+        }, function(err){ console.error("Removing a user failed:", err); errEl.textContent = "Couldn't remove just now — nothing was changed. Try again in a moment."; });
+      });
+      row.querySelector(".uzu-user-head").appendChild(rmBtn);
       listEl.appendChild(row);
     });
+    bd.__refreshPeople = function(){ Array.prototype.forEach.call(listEl.querySelectorAll(".uzu-user"), function(r){ r.dispatchEvent(new Event("change", { bubbles: false })); }); };
     if (!sorted.length) listEl.innerHTML = '<p class="uzu-sub">No names yet.</p>';
     var waiting = (pending || []).filter(function(x){ return x && !x.decision; });
     if (waiting.length){
@@ -3595,11 +4071,12 @@ body.plan-fullscreen .plan-viewport{
     bd.addEventListener("click", function(e){
       var b = e.target.closest && e.target.closest("[data-a]"); if (!b) return;
       if (b.getAttribute("data-a") === "cancel"){ bd.remove(); return; }
-      var newAdmins = [], apps = {};
+      var newAdmins = [], apps = {}, depts = {};
       Array.prototype.forEach.call(listEl.querySelectorAll(".uzu-user"), function(row){
         var n = row.getAttribute("data-name");
         if (row.querySelector(".uzu-admin").checked) newAdmins.push(n);
-        apps[low(n)] = Array.prototype.slice.call(row.querySelectorAll(".uzu-user-apps input:checked")).map(function(c){ return c.value; });
+        apps[low(n)] = Array.prototype.slice.call(row.querySelectorAll(".uzu-user-apps:not(.uzu-user-depts) input:checked")).map(function(c){ return c.value; });
+        depts[n] = Array.prototype.slice.call(row.querySelectorAll(".uzu-user-depts input:checked")).map(function(c){ return c.value; });
       });
       if (!newAdmins.length){ errEl.textContent = "Keep at least one administrator."; return; }
       b.disabled = true; errEl.textContent = "Saving…";
@@ -3613,7 +4090,19 @@ body.plan-fullscreen .plan-viewport{
           if (was !== now){ r.showInApps = apps[k].join(";"); changed = true; }
         });
         var adminsChanged = newAdmins.map(low).sort().join("|") !== admins.map(low).sort().join("|");
-        return (changed ? cfg.writeUsers(fresh) : Promise.resolve()).then(function(){ return adminsChanged ? writeAdmins(newAdmins) : null; }).then(function(){
+        var deptsChanged = Object.keys(depts).some(function(n){
+          var was = ((deptMap && Object.keys(deptMap).filter(function(k){ return low(k) === low(n); }).map(function(k){ return validDepts(deptMap[k]); })[0]) || []).slice().sort().join(";");
+          return was !== depts[n].slice().sort().join(";");
+        });
+        var saveDepts = !deptsChanged ? Promise.resolve() : readDepts(true).then(function(m){
+          Object.keys(depts).forEach(function(n){ var k = Object.keys(m).filter(function(x){ return low(x) === low(n); })[0] || n; if (depts[n].length || m[k]) m[k] = depts[n]; });
+          return writeText(root(), DEPT_FILE, JSON.stringify({ people: m }, null, 1)).then(function(){ deptCache = m; deptAt = Date.now(); });
+        });
+        changed = changed || deptsChanged;
+        var newDa = liveDeptApps(), daChanged = DEPARTMENTS.some(function(d){ return (newDa[d[0]] || []).slice().sort().join(";") !== (deptApps[d[0]] || []).slice().sort().join(";"); });
+        var saveDeptApps = daChanged ? writeDeptApps(newDa) : Promise.resolve();
+        changed = changed || daChanged;
+        return saveDepts.then(function(){ return saveDeptApps; }).then(function(){ return (changed ? cfg.writeUsers(fresh) : Promise.resolve()); }).then(function(){ return adminsChanged ? writeAdmins(newAdmins) : null; }).then(function(){
           bd.remove();
           if (cfg.refresh) try{ cfg.refresh(); }catch(e){}
           toast(changed || adminsChanged ? "Saved. Administrators: " + newAdmins.join(", ") + "." : "Nothing changed.");
@@ -3649,13 +4138,29 @@ body.plan-fullscreen .plan-viewport{
     if (!first) return;
     document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") setTimeout(poke, 800); });
     setTimeout(function(){ loadAdmins(); }, 1500);
+    // (2026-10-07) whoever is signed in with no permission for this app is signed out (however the name got there: the cover, the name button,
+    // a typed name) -- UtzSignIn shows "No access to this app. Ask an administrator"
+    setInterval(function(){ var n = me(); if (n && !canUse(n) && window.UtzSignIn && window.UtzSignIn.revoke) window.UtzSignIn.revoke(n); }, 1000);
+    window.addEventListener("utzline-signed-in", function(){ var n = me(); if (n && !canUse(n) && window.UtzSignIn && window.UtzSignIn.revoke) window.UtzSignIn.revoke(n); });
+    setTimeout(refreshDefaults, 800); setInterval(refreshDefaults, 120000); // the department default apps decide who is listed here
     // someone signing in (any route: the sign-in cover, the name button, a new name) -> an administrator gets asked straight away
     var last = null;
     setInterval(function(){ var n = me(); if (n !== last){ last = n; if (n) poke(); } placePill(); }, 3000);
     window.addEventListener("resize", function(){ placePill(); });
     setTimeout(placePill, 600);
   }
-  window.UtzUsers = { APP_CODES: APP_CODES, init: init, filterNames: filterNames, showsHere: showsHere, needsApproval: needsApproval, request: request, poke: poke, loadAdmins: loadAdmins, isAdmin: isAdminName, PENDING_FILE: PENDING_FILE, openUsers: openManage, ADMIN_FILE: ADMIN_FILE };
+  // (2026-10-08) Andrew: "the pin issue is it loses contact with the project folder". Android drops the folder permission between visits; the PIN is
+  // checked against utzline-users.csv in that folder, and the sign-in cover sat above the app's own Reconnect screen, so there was no way to restore it.
+  // Called from the tap on a name: asks for the folder's editing permission again (instant when it is still granted). Resolves true/false.
+  function ensureAccess(){
+    var r = root();
+    if (!r || typeof r.requestPermission !== "function") return Promise.resolve(true);
+    return Promise.resolve(r.requestPermission({ mode: "readwrite" })).then(function(p){
+      if (p !== "granted") toast("Allow access to the Projects folder to sign in (the PIN is checked against it).");
+      return p === "granted";
+    }, function(){ return false; });
+  }
+  window.UtzUsers = { ensureAccess: ensureAccess, canUse: canUse, noAccessNames: noAccessNames, defaultApps: defaultApps, refreshDefaults: refreshDefaults, DEPARTMENTS: DEPARTMENTS, departmentsOf: departmentsOf, setDepartments: setDepartments, pickDepartments: pickDepartments, APP_CODES: APP_CODES, init: init, filterNames: filterNames, showsHere: showsHere, needsApproval: needsApproval, request: request, poke: poke, loadAdmins: loadAdmins, isAdmin: isAdminName, PENDING_FILE: PENDING_FILE, openUsers: openManage, ADMIN_FILE: ADMIN_FILE };
 })();
 </script>
 <!-- UTZLINE-USERS END -->
@@ -6622,27 +7127,17 @@ body.plan-fullscreen .plan-viewport{
      none of the administrators has a PIN in it, the change is allowed -- there is nothing to check against.
    - Its own little numberpad (4 digits), so it works in apps with no numberpad of their own ($ Summary).
    UtzAdminGate.guard(getRoot, fn): asks, then runs fn() only on the right PIN.  UtzAdminGate.require(getRoot) -> Promise<bool>. */
-/* UTZLINE PIN (2026-10-02): PINs in utzline-users.csv are stored scrambled ("h1:<salt>:<sha-256>") so the file can't be read for PINs.
-   A plain PIN already in the file still works (compared as-is) and is scrambled the next time an app saves the file.
-   UtzPin.eq(stored, entered) -> bool (a blank stored PIN never matches);  UtzPin.stored(pin) -> what to write to the file;
+/* UTZLINE PIN: (2026-10-08) PINs in utzline-users.csv are saved as typed -- the hashing was removed. PINs the older builds wrote as
+   "h1:<salt>:<sha-256>" are still read (they can't be turned back into digits), until that PIN is set again.
+   UtzPin.eq(stored, entered) -> bool (a blank stored PIN never matches);  UtzPin.stored(pin) -> what to write to the file (plain since 2026-10-08; old h1: hashes are still read);
    UtzPin.isHashed(s).  Pure ES5 SHA-256 (works on file:// and plain http, where crypto.subtle is missing). */
 (function(){
   "use strict";
   if (window.UtzPin) return;
-  var K = [], H0 = [];
-  (function(){
-    var n = 2, found = 0;
-    while (found < 64){
-      var prime = true;
-      for (var d = 2; d * d <= n; d++) if (n % d === 0){ prime = false; break; }
-      if (prime){
-        if (found < 8) H0.push(((Math.pow(n, 1 / 2) % 1) * 4294967296) >>> 0);
-        K.push(((Math.pow(n, 1 / 3) % 1) * 4294967296) >>> 0);
-        found++;
-      }
-      n++;
-    }
-  })();
+  // the standard SHA-256 constants written out (2026-10-08): computing them with Math.pow gave a different PIN hash on some Android
+  // browsers, so a PIN set on the PC was rejected there
+  var H0 = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
   function utf8(s){
     var out = [], i, c;
     s = unescape(encodeURIComponent(String(s)));
@@ -6685,14 +7180,15 @@ body.plan-fullscreen .plan-viewport{
   function eq(storedPin, entered){
     var st = String(storedPin == null ? "" : storedPin).trim(), en = String(entered == null ? "" : entered);
     if (!st) return false;
-    if (isHashed(st)){ var p = st.split(":"); return p.length === 3 && sha256Hex(p[1] + ":" + en) === p[2]; }
-    return st === en;
+    // (2026-10-08) Android keyboards can add a space or use full-width digits: also try the entered PIN tidied up
+    var tidy = en.replace(/[\uFF10-\uFF19]/g, function(ch){ return String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 48); }).replace(/\s+/g, "");
+    if (isHashed(st)){ var p = st.split(":"); return p.length === 3 && (sha256Hex(p[1] + ":" + en) === p[2] || (tidy !== en && sha256Hex(p[1] + ":" + tidy) === p[2])); }
+    return st === en || st === tidy;
   }
+  // (2026-10-08) Andrew: "remove the hashing" -- new and changed PINs are written as typed (trimmed). A PIN already written as h1:<salt>:<hash>
+  // can't be turned back into digits, so eq() still reads those (nobody is locked out); set the PIN again and it is saved plain.
   function stored(pin){
-    var p = String(pin == null ? "" : pin).trim();
-    if (!p || isHashed(p)) return p;
-    var s = salt();
-    return "h1:" + s + ":" + sha256Hex(s + ":" + p);
+    return String(pin == null ? "" : pin).trim();
   }
   window.UtzPin = { eq: eq, stored: stored, isHashed: isHashed, _sha256: sha256Hex };
 })();
@@ -6748,11 +7244,12 @@ body.plan-fullscreen .plan-viewport{
     document.head.appendChild(st);
   }
   // The numberpad: resolves true on a PIN that verify() accepts, false when cancelled.
-  function pad(subtitle, verify){
+  function pad(subtitle, verify, title){
     injectStyle();
     return new Promise(function(resolve){
       var el = document.createElement("div"); el.id = "utzAdminPad"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true");
-      el.innerHTML = '<div class="uap-card"><h2>Administrator PIN</h2><p></p><div class="uap-dots"><span class="uap-dot"></span><span class="uap-dot"></span><span class="uap-dot"></span><span class="uap-dot"></span></div><div class="uap-msg"></div><div class="uap-keys"></div></div>';
+      el.innerHTML = '<div class="uap-card"><h2></h2><p></p><div class="uap-dots"><span class="uap-dot"></span><span class="uap-dot"></span><span class="uap-dot"></span><span class="uap-dot"></span></div><div class="uap-msg"></div><div class="uap-keys"></div></div>';
+      el.querySelector("h2").textContent = title || "Administrator PIN";
       el.querySelector("p").textContent = subtitle;
       var keys = el.querySelector(".uap-keys"), dots = el.querySelectorAll(".uap-dot"), msg = el.querySelector(".uap-msg"), entered = "", checking = false;
       function paint(){ for (var i = 0; i < 4; i++) dots[i].className = "uap-dot" + (i < entered.length ? " on" : ""); }
@@ -6800,7 +7297,7 @@ body.plan-fullscreen .plan-viewport{
     busy = true;
     requireAdmin(getRoot, why).then(function(ok){ busy = false; if (ok) fn(); }, function(){ busy = false; fn(); });
   }
-  window.UtzAdminGate = { require: requireAdmin, guard: guard, DEFAULT_ADMINS: DEFAULT_ADMINS, ADMIN_FILE: ADMIN_FILE, _parseCsv: parseCsv };
+  window.UtzAdminGate = { require: requireAdmin, guard: guard, pad: pad, DEFAULT_ADMINS: DEFAULT_ADMINS, ADMIN_FILE: ADMIN_FILE, _parseCsv: parseCsv };
 })();
 /* UTZLINE-ADMIN-GATE END */
 </script>
@@ -6869,9 +7366,30 @@ body.plan-fullscreen .plan-viewport{
         <select class="mbtn identity-select" id="identitySelector" aria-label="Your name"></select>
       </div>
     </div>
+    <div class="actions-row"><button class="mbtn" type="button" id="pdStartBtn">🚚 Pre-delivery check</button></div>
     <div class="list" id="projectListEl"></div>
     <button class="utz-change-folder" id="switchRootBtn" type="button" title="Use a different Projects folder">Change folder</button>
     <div style="height:44px" aria-hidden="true"></div>
+  </div>
+
+  <!-- ---- Pre-delivery check (2026-10-07) ---- -->
+  <div class="screen" id="screenPreDelivery">
+    <button type="button" class="back-link" id="pdBackBtn">← All projects</button>
+    <h2 id="pdHeading">Pre-delivery check</h2>
+    <div id="pdPick" hidden>
+      <p class="hint">What project are you delivering?</p>
+      <div class="list" id="pdProjectList"></div>
+    </div>
+    <div id="pdCheck" hidden>
+      <div class="pd-last" id="pdLast"></div>
+      <p class="hint">Joinery and reworks that are ready to deliver. Tick each one as it goes on the truck.</p>
+      <div class="pd-count" id="pdCount"></div>
+      <div class="actions-row" style="margin-top:0"><button class="mbtn" type="button" id="pdAllBtn">Tick all</button><button class="mbtn" type="button" id="pdNoneBtn">Clear</button></div>
+      <div id="pdList"></div>
+      <div class="pd-section">Note (optional)</div>
+      <textarea class="pd-note" id="pdNoteEl" placeholder="e.g. island bench not loaded, damaged in the yard"></textarea>
+      <div class="actions-row"><button class="mbtn mbtn-accent" type="button" id="pdFinishBtn">Finish check</button></div>
+    </div>
   </div>
 
   <!-- ---- Level list ---- -->
@@ -7106,8 +7624,8 @@ body.plan-fullscreen .plan-viewport{
     <h2 id="reworkHeading"></h2>
     <p class="hint">Track rework needed on this joinery item — photos, details, cabinet number, and whether the reworked part has come back on site. Add as many entries as needed.</p>
 
-    <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary);">Add rework</h2>
-    <div class="rework-form">
+    <h2 id="reworkAddHeading" style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary);">Add rework</h2>
+    <div class="rework-form" id="reworkAddForm">
       <div class="so-field" style="max-width:220px;">
         <label>Cabinet number</label>
         <input type="text" id="reworkCabinetInput" autocomplete="off" placeholder="e.g. C14">
@@ -7198,6 +7716,17 @@ body.plan-fullscreen .plan-viewport{
     <div class="modal-actions">
       <button class="mbtn" id="confirmCancel">Cancel</button>
       <button class="mbtn mbtn-danger" id="confirmOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- (2026-10-07) Start-up question: factory (pre-delivery check) or onsite (the delivery checklists) -->
+<div class="modal-backdrop" id="pdWhereBackdrop" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="pdWhereMsg">
+    <p id="pdWhereMsg" style="font-weight:600;font-size:16px;">Are you at the factory or onsite?</p>
+    <div class="actions-row" style="flex-direction:column;margin-top:0">
+      <button class="mbtn mbtn-accent" type="button" id="pdFactoryBtn">🏭 At the factory — pre-delivery check</button>
+      <button class="mbtn" type="button" id="pdOnsiteBtn">📍 Onsite — delivery checklists</button>
     </div>
   </div>
 </div>
@@ -7392,7 +7921,8 @@ window.__pdfImportLibFailed = false;
      flaggedTo       { group: "machineShop" | "factoryManagers" | "manufacture" | "install" | "delivery" | "solidSurface" }
                                        (2026-10-02: who a rework is flagged with -- chosen when it is logged or later; a drafter is flagged
                                         with drafterAssigned above; flaggedTo hands it to a group and clears any drafter)
-     drafterAction   { action: "resentToCnc" | "notRequired" | "passedOn", to?, fileName? }
+     drafterAction   { action: "resentToCnc" | "notRequired" | "passedOn", to?, fileName?, machine? }
+                                        (2026-10-06: machine = the machine the file was sent to, picked in a popup from utzline-machines.json at the Projects root)
                                         (2026-10-02: fileName = the file the drafter sent to the CNC, typed with "Sent to CNC")
                                         (the drafter's answer; passedOn hands it to drafter `to`)
                                         (2026-10-02: "resentToCnc" now reads "Sent to CNC" on screen and in PDFs -- the stored value is unchanged)
@@ -7813,9 +8343,9 @@ window.__pdfImportLibFailed = false;
          else {
            var a = ev.action === "resentToCnc" || ev.action === "notRequired" || ev.action === "passedOn" ? ev.action : "";
            if (!a) return;
-           drafterHistory.push({ kind: a, to: ev.to || "", fileName: String(ev.fileName || "").trim(), at: ev.at || "", by: ev.by || "", app: ev.app || "" });
+           drafterHistory.push({ kind: a, to: ev.to || "", fileName: String(ev.fileName || "").trim(), machine: String(ev.machine || "").trim(), at: ev.at || "", by: ev.by || "", app: ev.app || "" });
            if (a === "passedOn"){ drafter = String(ev.to || "").trim(); drafterAt = ev.at || ""; drafterBy = ev.by || ""; drafterAction = null; flagGroup = "drafter"; flagGroupAt = ev.at || ""; flagGroupBy = ev.by || ""; }
-           else{ drafterAction = { action: a, fileName: String(ev.fileName || "").trim(), at: ev.at || "", by: ev.by || "", app: ev.app || "" }; if (a === "resentToCnc" && drafterAction.fileName) cncFile = { fileName: drafterAction.fileName, at: ev.at || "", by: ev.by || "" }; }
+           else{ drafterAction = { action: a, fileName: String(ev.fileName || "").trim(), machine: String(ev.machine || "").trim(), at: ev.at || "", by: ev.by || "", app: ev.app || "" }; if (a === "resentToCnc" && drafterAction.fileName) cncFile = { fileName: drafterAction.fileName, machine: drafterAction.machine, at: ev.at || "", by: ev.by || "" }; }
          }
        });
     // (2026-10-02) Machine Schedule: "Cutting not required" -- the latest cutNotRequired event wins (undo: true clears it)
@@ -7863,7 +8393,7 @@ window.__pdfImportLibFailed = false;
     if (f.closed) out.push({ at: f.closed.at, by: f.closed.by, what: "Closed out", kind: "closed", app: f.closed.app || "" });
     f.comments.forEach(function(c){ out.push({ at: c.at, by: c.by || "", what: "Comment: " + (c.text || ""), kind: "comment", app: c.app || "" }); });
     (f.drafterHistory || []).forEach(function(d){
-      var what = d.kind === "flaggedTo" ? "Flagged to " + (FLAG_GROUPS[d.group] || d.group) : d.kind === "assigned" ? "Flagged to drafter " + (d.drafter || "?") : d.kind === "resentToCnc" ? "Drafter: sent to CNC" + (d.fileName ? " — file: " + d.fileName : "") : d.kind === "notRequired" ? "Drafter: not required (nothing to redraw)" : "Drafter: passed on to " + (d.to || "?");
+      var what = d.kind === "flaggedTo" ? "Flagged to " + (FLAG_GROUPS[d.group] || d.group) : d.kind === "assigned" ? "Flagged to drafter " + (d.drafter || "?") : d.kind === "resentToCnc" ? "Drafter: sent to CNC" + (d.machine ? " (" + d.machine + ")" : "") + (d.fileName ? " — file: " + d.fileName : "") : d.kind === "notRequired" ? "Drafter: not required (nothing to redraw)" : "Drafter: passed on to " + (d.to || "?");
       out.push({ at: d.at, by: d.by || "", what: what, kind: "drafter", app: d.app || "" });
     });
     (f.cutHistory || []).forEach(function(c){
@@ -7872,6 +8402,7 @@ window.__pdfImportLibFailed = false;
     out.sort(function(a, b){ return String(b.at || "").localeCompare(String(a.at || "")); });
     return out;
   }
+  function cncText(c){ return c ? c.fileName + (c.machine ? " → " + c.machine : "") : ""; } // (2026-10-06) the file and the machine it went to
   function drafterActionLabel(a){ return a === "resentToCnc" ? "Sent to CNC" : a === "notRequired" ? "Not required" : a === "passedOn" ? "Passed on" : ""; }
   function stateLabel(status, short){ var s = STATES[status] || STATES.logged; return short ? s.short : s.long; }
 
@@ -8026,8 +8557,8 @@ window.__pdfImportLibFailed = false;
     // extra row costs 28pt and would push photos off page 1 on every other PDF
     if (f.cutNotRequired) fields.push(["Cutting", "Not required — " + [fmtDate(f.cutNotRequired.at, true), f.cutNotRequired.by].filter(Boolean).join(", ")]);
     if (!f.drafter && f.flagGroup && FLAG_GROUPS[f.flagGroup]) fields.push(["Flagged to", FLAG_GROUPS[f.flagGroup]], ["", ""]);
-    if (f.cncFile && !f.drafter) fields.push(["CNC file", f.cncFile.fileName + (f.cncFile.by ? " (sent by " + f.cncFile.by + ")" : "")], ["", ""]);
-    if (f.drafter) fields.push(["Drafter", f.drafter + (f.drafterAction ? " — " + drafterActionLabel(f.drafterAction.action) + (f.drafterAction.fileName ? " (" + f.drafterAction.fileName + ")" : "") : " (flagged)")], ["", ""]);
+    if (f.cncFile && !f.drafter) fields.push(["CNC file", cncText(f.cncFile) + (f.cncFile.by ? " (sent by " + f.cncFile.by + ")" : "")], ["", ""]);
+    if (f.drafter) fields.push(["Drafter", f.drafter + (f.drafterAction ? " — " + drafterActionLabel(f.drafterAction.action) + (f.drafterAction.fileName ? " (" + f.drafterAction.fileName + (f.drafterAction.machine ? " → " + f.drafterAction.machine : "") + ")" : "") : " (flagged)")], ["", ""]);
     while (fields.length && fields[fields.length - 1][0] === "" ) fields.pop();
     var rowPitch = 28;
     var colW = CW / 2;
@@ -8279,10 +8810,10 @@ window.__pdfImportLibFailed = false;
   // (2026-10-02) a short "Drafter: X -- Sent to CNC" tag for the register / strip rows ("" when the rework was never flagged to one)
   function drafterTag(f){
     if (!f.drafter){
-      if (f.flagGroup && FLAG_GROUPS[f.flagGroup]) return "<div class=\"urw-small urw-drafter-tag\">Flagged to: <b>" + escapeHtml(FLAG_GROUPS[f.flagGroup]) + "</b>" + (f.cncFile ? " — CNC file: <b>" + escapeHtml(f.cncFile.fileName) + "</b>" : "") + "</div>";
+      if (f.flagGroup && FLAG_GROUPS[f.flagGroup]) return "<div class=\"urw-small urw-drafter-tag\">Flagged to: <b>" + escapeHtml(FLAG_GROUPS[f.flagGroup]) + "</b>" + (f.cncFile ? " — CNC file: <b>" + escapeHtml(cncText(f.cncFile)) + "</b>" : "") + "</div>";
       return "";
     }
-    return "<div class=\"urw-small urw-drafter-tag\">Drafter: " + escapeHtml(f.drafter) + " — " + (f.drafterAction ? "<b>" + escapeHtml(drafterActionLabel(f.drafterAction.action)) + "</b>" + (f.drafterAction.fileName ? " (" + escapeHtml(f.drafterAction.fileName) + ")" : "") : "flagged") + (f.cncFile && !(f.drafterAction && f.drafterAction.fileName) ? " — CNC file: <b>" + escapeHtml(f.cncFile.fileName) + "</b>" : "") + "</div>";
+    return "<div class=\"urw-small urw-drafter-tag\">Drafter: " + escapeHtml(f.drafter) + " — " + (f.drafterAction ? "<b>" + escapeHtml(drafterActionLabel(f.drafterAction.action)) + "</b>" + (f.drafterAction.fileName ? " (" + escapeHtml(f.drafterAction.fileName + (f.drafterAction.machine ? " → " + f.drafterAction.machine : "")) + ")" : "") : "flagged") + (f.cncFile && !(f.drafterAction && f.drafterAction.fileName) ? " — CNC file: <b>" + escapeHtml(cncText(f.cncFile)) + "</b>" : "") + "</div>";
   }
   function rowKey(row){ return (row.project || "") + "\u0000" + (row.isFlat ? "F" : "L") + "\u0000" + (row.levelDir || "") + "\u0000" + (row.roomDir || "") + "\u0000" + row.fileName; }
   function entryKey(row){ return rowKey(row) + "\u0000" + (row.entry.id || row.entry.createdAt || ""); }
@@ -8326,6 +8857,7 @@ window.__pdfImportLibFailed = false;
        getProjectHandle(name) -> Promise<handle>
        getRootHandle()    -> the Projects root (company logo)
        getUser()          -> signed-in name or ""
+       ensureUser()       -> (optional) Promise<bool>: asks for a name + PIN when nobody is signed in; the change then goes ahead
        confirmPin(name, why) -> Promise<bool>
        toast(msg, ms)
        loadJsPdf()        -> Promise<jsPDF constructor>
@@ -8438,14 +8970,15 @@ window.__pdfImportLibFailed = false;
     }
     // Outstanding (not delivered / closed) reworks per drafter, for the Viewer's Reworks panel:
     //   { by: { "<name>": { waiting, open } }, none, open, loading }   waiting = flagged, no answer yet; open = flagged, not delivered
-    function drafterSummary(){
-      var by = {}, none = 0, open = 0, unread = 0, groups = {};
+    function drafterSummary(onlyProject){
+      var by = {}, none = 0, open = 0, unread = 0, groups = {}, done = 0;
       Object.keys(FLAG_GROUPS).forEach(function(g){ groups[g] = 0; });
       st.rows.forEach(function(r){
+        if (onlyProject && r.project !== onlyProject) return; // (2026-10-04) the menu inside a project counts that project's reworks only
         var evs = eventsOf(r);
         if (!evs){ unread++; return; }
         var f = fold(r.entry, evs);
-        if (f.isDone) return;
+        if (f.isDone){ done++; return; }
         open++;
         if (!f.drafter){ if (f.flagGroup && FLAG_GROUPS[f.flagGroup]) groups[f.flagGroup]++; else none++; return; }
         var k = f.drafter;
@@ -8454,7 +8987,7 @@ window.__pdfImportLibFailed = false;
         b.open++;
         if (!f.drafterAction) b.waiting++;
       });
-      return { by: by, none: none, groups: groups, open: open, unread: unread, loading: st.loading };
+      return { by: by, none: none, groups: groups, open: open, done: done, unread: unread, loading: st.loading };
     }
     // (2026-10-02) Andrew: "this to show amount of outstanding reworks per project" + "clicking on the project list takes you to that projects reworks".
     // Outstanding = not delivered / closed out. { list: [{ project, open }] (most first), open, unread, loading }
@@ -8549,7 +9082,7 @@ window.__pdfImportLibFailed = false;
         "<td>" + pillHtml(f) + drafterTag(f) + "</td>" +
         "<td class=\"urw-acts\">" + act + "<button type=\"button\" class=\"btn secondary sm\" data-urw-open=\"" + idx + "\">Open</button></td>" +
         "<td class=\"urw-text\">" + escapeHtml(e.text || "(no description)") + "</td>" +
-        "<td class=\"urw-cncfile\">" + (f.cncFile ? "<b>" + escapeHtml(f.cncFile.fileName) + "</b>" : "<span class=\"urw-muted\">—</span>") + "</td>" +
+        "<td class=\"urw-cncfile\">" + (f.cncFile ? "<b>" + escapeHtml(f.cncFile.fileName) + "</b>" + (f.cncFile.machine ? "<div class=\"urw-small urw-muted\">" + escapeHtml(f.cncFile.machine) + "</div>" : "") : "<span class=\"urw-muted\">—</span>") + "</td>" +
         "<td>" + (e.photoCount ? e.photoCount : "—") + "</td>" +
         "<td>" + escapeHtml(fmtDate(e.createdAt, true)) + (e.createdBy ? "<div class=\"urw-small urw-muted\">" + escapeHtml(e.createdBy) + "</div>" : "") + "</td>" +
         "<td class=\"urw-loggedin\">" + (e.createdApp ? escapeHtml(appLabel(e.createdApp)) : "<span class=\"urw-muted\">—</span>") + "</td>" +
@@ -8646,8 +9179,10 @@ window.__pdfImportLibFailed = false;
       st.projectFilter = projectName || "";
       st.drafterFilter = (opts && opts.drafter) || ""; // (2026-10-02) the Viewer's drafter buttons open the register for one drafter
       if (opts && "state" in opts) st.stateFilter = opts.state || "";
+      if (opts && opts.showDelivered) st.showDelivered = true; // (2026-10-04) the menu's Completed button: the closed-out reworks at the bottom
       cfg.show("reworks");
       renderRegister();
+      if (opts && opts.showDelivered) setTimeout(function(){ var c = cfg.registerEl && cfg.registerEl.querySelector("[data-urw=delivCard]"); if (c && c.scrollIntoView) c.scrollIntoView(); }, 400);
       return loadAll();
     }
 
@@ -8676,10 +9211,16 @@ window.__pdfImportLibFailed = false;
         return true;
       }, function(err){ console.error("Automatic flag to " + group + " failed:", err); return false; });
     }
+    // (2026-10-06) an app with no sign-in at the start (Machine Schedule) gives ensureUser(): asks for a name + PIN, then the change goes ahead
+    function askUser(retry){
+      if (cfg.ensureUser) return cfg.ensureUser().then(function(ok){ return ok ? retry() : false; });
+      toast("Choose your name (and PIN) on the Home screen first — every rework change is logged against a name.", 4200);
+      return Promise.resolve(false);
+    }
     function applyAction(row){
       if (!row || !cfg.action) return Promise.resolve(false);
       var user = cfg.getUser();
-      if (!user){ toast("Choose your name (and PIN) on the Home screen first — every rework change is logged against a name.", 4200); return Promise.resolve(false); }
+      if (!user) return askUser(function(){ return applyAction(row); });
       return freshFold(row).then(function(res){
         if (res.f.isDone){ toast("Already delivered — nothing to change."); afterChange(row); return false; }
         if (!cfg.action.canApply(res.f.status, res.f)){
@@ -8712,7 +9253,7 @@ window.__pdfImportLibFailed = false;
     function setCutNotRequired(row, undo){
       if (!row || !cfg.cutNotRequired) return Promise.resolve(false);
       var user = cfg.getUser();
-      if (!user){ toast("Choose your name (and PIN) on the Home screen first — every rework change is logged against a name.", 4200); return Promise.resolve(false); }
+      if (!user) return askUser(function(){ return setCutNotRequired(row, undo); });
       return freshFold(row).then(function(res){
         var f = res.f;
         if (f.isDone){ toast("Already delivered — nothing to change."); afterChange(row); return false; }
@@ -8761,10 +9302,68 @@ window.__pdfImportLibFailed = false;
       });
       return drafterCache[key];
     }
+    // (2026-10-06) Andrew: "when a rework is sent to cnc (filename is entered) have a popup that says what machine has this been sent to,
+    // with a drop down selector where you can add machine names". The list is utzline-machines.json at the Projects root (every project
+    // shares it); a new name is added to it there and then. Resolves the machine name, or null when the popup is cancelled.
+    var MACHINES_FILE = "utzline-machines.json";
+    function readMachines(){
+      var root = cfg.getRootHandle && cfg.getRootHandle();
+      if (!root) return Promise.resolve([]);
+      return root.getFileHandle(MACHINES_FILE, { create: false }).then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); })
+        .then(function(t){ var j = JSON.parse(t); return Array.isArray(j) ? j.map(function(x){ return String(x || "").trim(); }).filter(Boolean) : []; }, function(){ return []; });
+    }
+    function saveMachines(list){
+      var root = cfg.getRootHandle && cfg.getRootHandle();
+      if (!root) return Promise.resolve(false);
+      return root.getFileHandle(MACHINES_FILE, { create: true }).then(function(fh){ return fh.createWritable(); }).then(function(w){ return Promise.resolve(w.write(JSON.stringify(list, null, 1))).then(function(){ return w.close(); }); }).then(function(){ return true; }, function(err){ console.error("Saving the machine list failed:", err); return false; });
+    }
+    function askMachine(row, fileName){
+      return readMachines().then(function(list){
+        return new Promise(function(resolve){
+          var last = ""; try{ last = localStorage.getItem("utzline-last-machine") || ""; }catch(e){}
+          var bd = document.createElement("div"); bd.className = "urw-machine-ask";
+          bd.style.cssText = "position:fixed;inset:0;z-index:2147481500;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;";
+          var box = document.createElement("div"); box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Which machine");
+          box.style.cssText = "background:var(--panel,var(--surface-1,#1c2125));color:var(--text,var(--text-primary,#eee));border:1px solid var(--border,#444);border-radius:12px;max-width:420px;width:100%;padding:16px;";
+          box.innerHTML = "<h2 style=\"margin:0 0 4px;font-size:18px;\">Which machine?</h2>" +
+            "<p style=\"margin:0 0 10px;opacity:.8;font-size:14px;\">" + escapeHtml(fileName ? "“" + fileName + "” was sent to…" : "This rework was sent to…") + "</p>" +
+            "<select data-urw-m=\"sel\" style=\"width:100%;font:inherit;min-height:42px;padding:6px 10px;border-radius:8px;\"></select>" +
+            "<div data-urw-m=\"addRow\" style=\"display:none;gap:8px;margin-top:8px;\"><input data-urw-m=\"new\" type=\"text\" maxlength=\"60\" placeholder=\"New machine name\" style=\"flex:1;font:inherit;min-height:42px;padding:6px 10px;border-radius:8px;\"><button type=\"button\" data-urw-m=\"add\" style=\"font:inherit;min-height:42px;padding:6px 14px;border-radius:8px;\">Add</button></div>" +
+            "<p data-urw-m=\"err\" style=\"margin:8px 0 0;color:#e77;font-size:13px;\" hidden></p>" +
+            "<div style=\"display:flex;gap:10px;justify-content:flex-end;margin-top:14px;\"><button type=\"button\" data-urw-m=\"cancel\" style=\"font:inherit;min-height:42px;padding:6px 16px;border-radius:8px;\">Cancel</button><button type=\"button\" data-urw-m=\"ok\" style=\"font:inherit;min-height:42px;padding:6px 16px;border-radius:8px;font-weight:700;\">Sent</button></div>";
+          bd.appendChild(box); document.body.appendChild(bd);
+          function q(n){ return box.querySelector("[data-urw-m=" + n + "]"); }
+          var sel = q("sel");
+          function fill(pick){
+            list.sort(function(a, b){ return a.localeCompare(b, undefined, { sensitivity: "base" }); });
+            sel.innerHTML = "<option value=\"\">— pick a machine —</option>" + list.map(function(n){ return "<option>" + escapeHtml(n) + "</option>"; }).join("") + "<option value=\"__add\">+ Add a machine…</option>";
+            sel.value = pick && list.indexOf(pick) !== -1 ? pick : "";
+          }
+          fill(last);
+          function finish(v){ if (bd.parentNode) bd.parentNode.removeChild(bd); resolve(v); }
+          sel.addEventListener("change", function(){ var add = sel.value === "__add"; q("addRow").style.display = add ? "flex" : "none"; if (add) q("new").focus(); });
+          function doAdd(){
+            var n = q("new").value.trim().replace(/\s+/g, " "); if (!n) return;
+            var have = list.filter(function(x){ return x.toLowerCase() === n.toLowerCase(); })[0];
+            if (have){ q("addRow").style.display = "none"; q("new").value = ""; fill(have); return; }
+            list.push(n);
+            saveMachines(list).then(function(ok){ if (!ok){ q("err").hidden = false; q("err").textContent = "Couldn't save the new machine to the list — it is used for this one only."; } q("addRow").style.display = "none"; q("new").value = ""; fill(n); });
+          }
+          q("add").addEventListener("click", doAdd);
+          q("new").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); doAdd(); } });
+          q("cancel").addEventListener("click", function(){ finish(null); });
+          q("ok").addEventListener("click", function(){
+            if (!sel.value || sel.value === "__add"){ q("err").hidden = false; q("err").textContent = "Pick the machine it was sent to (or add it)."; return; }
+            try{ localStorage.setItem("utzline-last-machine", sel.value); }catch(e){}
+            finish(sel.value);
+          });
+        });
+      });
+    }
     // (2026-10-02) the drafter's own answer (Viewer drafter panel): Sent to CNC (+ the file name) / Not required / pass on
     function writeDrafterAction(row, payload, doneMsg){
       var user = cfg.getUser();
-      if (!user){ toast("Choose your name (and PIN) on the Home screen first — every rework change is logged against a name.", 4200); return Promise.resolve(false); }
+      if (!user) return askUser(function(){ return writeDrafterAction(row, payload, doneMsg); });
       return writeEv(row, "drafterAction", payload, user, cfg.appName).then(function(ev){
         (st.logs[rowKey(row)] = st.logs[rowKey(row)] || []).push(ev);
         // Sent to CNC -> the rework is now with the Machine shop
@@ -8784,7 +9383,7 @@ window.__pdfImportLibFailed = false;
       name = String(name || "").trim();
       if (!name){ toast("Pick a drafter first."); return Promise.resolve(false); }
       var user = cfg.getUser();
-      if (!user){ toast("Choose your name (and PIN) on the Home screen first — every rework change is logged against a name.", 4200); return Promise.resolve(false); }
+      if (!user) return askUser(function(){ return flagDrafter(row, name); });
       if (cfg.drafterPicker && cfg.drafterPicker.answers && foldRow(row).drafter) return writeDrafterAction(row, { action: "passedOn", to: name }, "Passed on to " + name + ".");
       return writeEv(row, "drafterAssigned", { drafter: name }, user, cfg.appName).then(function(ev){
         (st.logs[rowKey(row)] = st.logs[rowKey(row)] || []).push(ev);
@@ -8801,7 +9400,7 @@ window.__pdfImportLibFailed = false;
     function flagGroupTo(row, group){
       if (!FLAG_GROUPS[group]) return Promise.resolve(false);
       var user = cfg.getUser();
-      if (!user){ toast("Choose your name (and PIN) on the Home screen first — every rework change is logged against a name.", 4200); return Promise.resolve(false); }
+      if (!user) return askUser(function(){ return flagGroupTo(row, group); });
       return writeEv(row, "flaggedTo", { group: group }, user, cfg.appName).then(function(ev){
         (st.logs[rowKey(row)] = st.logs[rowKey(row)] || []).push(ev);
         toast("Flagged to " + FLAG_GROUPS[group] + ".");
@@ -8816,7 +9415,7 @@ window.__pdfImportLibFailed = false;
     function undoAction(row){
       if (!row || !cfg.action) return Promise.resolve(false);
       var user = cfg.getUser();
-      if (!user){ toast("Choose your name (and PIN) on the Home screen first."); return Promise.resolve(false); }
+      if (!user) return askUser(function(){ return undoAction(row); });
       return freshFold(row).then(function(res){
         var f = res.f;
         if (f.isDone || f.status !== cfg.action.status){ toast("Nothing to undo — it's " + stateLabel(f.status).toLowerCase() + " now."); afterChange(row); return false; }
@@ -8839,7 +9438,7 @@ window.__pdfImportLibFailed = false;
       text = String(text || "").trim();
       if (!text){ toast("Type a comment first (or tap a quick pick)."); return Promise.resolve(false); }
       var user = cfg.getUser();
-      if (!user){ toast("Choose your name (and PIN) on the Home screen first — comments are logged against a name.", 4200); return Promise.resolve(false); }
+      if (!user) return askUser(function(){ return addComment(row, text); });
       return writeEv(row, "comment", { text: text }, user, cfg.appName).then(function(ev){
         (st.logs[rowKey(row)] = st.logs[rowKey(row)] || []).push(ev);
         toast("Comment added.");
@@ -9065,7 +9664,7 @@ window.__pdfImportLibFailed = false;
             "<dt>State</dt><dd>" + pillHtml(f) + (f.statusAt ? " <span class=\"urw-small urw-muted\">" + escapeHtml([f.statusBy, fmtDate(f.statusAt, true)].filter(Boolean).join(", ")) + "</span>" : "") + "</dd>" +
             (f.delivered ? "<dt>Delivered</dt><dd>" + escapeHtml([f.delivered.date || fmtDate(f.delivered.at), f.delivered.by].filter(Boolean).join(" — ")) + "</dd>" : "") +
             (!f.drafter && f.flagGroup && FLAG_GROUPS[f.flagGroup] ? "<dt>Flagged to</dt><dd>" + escapeHtml(FLAG_GROUPS[f.flagGroup]) + " <span class=\"urw-small urw-muted\">" + escapeHtml([f.flagGroupBy, fmtDate(f.flagGroupAt, true)].filter(Boolean).join(", ")) + "</span></dd>" : "") +
-            (f.cncFile && !f.drafter ? "<dt>CNC file</dt><dd><b>" + escapeHtml(f.cncFile.fileName) + "</b> <span class=\"urw-small urw-muted\">" + escapeHtml([f.cncFile.by, fmtDate(f.cncFile.at, true)].filter(Boolean).join(", ")) + "</span></dd>" : "") +
+            (f.cncFile && !f.drafter ? "<dt>CNC file</dt><dd><b>" + escapeHtml(cncText(f.cncFile)) + "</b> <span class=\"urw-small urw-muted\">" + escapeHtml([f.cncFile.by, fmtDate(f.cncFile.at, true)].filter(Boolean).join(", ")) + "</span></dd>" : "") +
             (f.drafter ? "<dt>Drafter</dt><dd>" + escapeHtml(f.drafter) + (f.drafterAction ? " — <b>" + escapeHtml(drafterActionLabel(f.drafterAction.action)) + "</b>" + (f.drafterAction.fileName ? " <span class=\"urw-small\">(file: " + escapeHtml(f.drafterAction.fileName) + ")</span>" : "") + " <span class=\"urw-small urw-muted\">" + escapeHtml([f.drafterAction.by, fmtDate(f.drafterAction.at, true)].filter(Boolean).join(", ")) + "</span>" : " <span class=\"urw-small urw-muted\">(flagged" + (f.drafterBy ? " by " + escapeHtml(f.drafterBy) : "") + ")</span>") + "</dd>" : "") +
           "</dl>" +
           "<p class=\"urw-desc\">" + escapeHtml(e.text || "(no description)") + "</p>" +
@@ -9102,7 +9701,7 @@ window.__pdfImportLibFailed = false;
       if (ncb) ncb.addEventListener("click", function(){ ncb.disabled = true; setCutNotRequired(row, false).then(function(){ ncb.disabled = false; }); });
       if (ncu) ncu.addEventListener("click", function(){ ncu.disabled = true; setCutNotRequired(row, true).then(function(){ ncu.disabled = false; }); });
       var cncIn = el.querySelector("[data-urw-d=cncFile]"), cncGo = el.querySelector("[data-urw-d=cncSent]"), nrGo = el.querySelector("[data-urw-d=drafterNotReq]");
-      if (cncGo) cncGo.addEventListener("click", function(){ cncGo.disabled = true; writeDrafterAction(row, { action: "resentToCnc", fileName: cncIn ? cncIn.value.trim() : "" }, "Sent to CNC — logged.").then(function(){ cncGo.disabled = false; }); });
+      if (cncGo) cncGo.addEventListener("click", function(){ cncGo.disabled = true; var fn = cncIn ? cncIn.value.trim() : ""; askMachine(row, fn).then(function(machine){ if (machine === null) return false; return writeDrafterAction(row, { action: "resentToCnc", fileName: fn, machine: machine }, "Sent to CNC (" + machine + ") — logged."); }).then(function(){ cncGo.disabled = false; }); });
       if (nrGo) nrGo.addEventListener("click", function(){ nrGo.disabled = true; writeDrafterAction(row, { action: "notRequired" }, "Not required — logged.").then(function(){ nrGo.disabled = false; }); });
       Array.prototype.forEach.call(el.querySelectorAll("[data-urw-d=flagGrp]"), function(gb){
         gb.addEventListener("click", function(){ gb.disabled = true; flagGroupTo(row, gb.getAttribute("data-grp")).then(function(ok){ if (!ok) gb.disabled = false; }); });
@@ -9312,7 +9911,66 @@ window.__pdfImportLibFailed = false;
       return loadAll();
     }
 
+    /* ---- (2026-10-06) Andrew: "when a rework is flagged to someone or a department, show a popup reminder of the reworks for that
+       person or department when they log in" -- every open rework flagged to the signed-in person (a drafter) or to a department they are
+       in (shared/users: utzline-departments.json), once per sign-in. ---- */
+    function myReworks(user, depts){
+      var lo = String(user || "").toLowerCase();
+      return st.rows.filter(function(r){
+        var evs = eventsOf(r); if (!evs) return false;
+        var f = fold(r.entry, evs);
+        if (f.isDone) return false;
+        if (f.drafter) return f.drafter.toLowerCase() === lo;
+        return !!(f.flagGroup && FLAG_GROUPS[f.flagGroup] && depts.indexOf(f.flagGroup) !== -1);
+      });
+    }
+    var remindEl = null;
+    function closeRemind(){ if (remindEl && remindEl.parentNode) remindEl.parentNode.removeChild(remindEl); remindEl = null; }
+    function showRemind(mine, user){
+      closeRemind();
+      var bd = document.createElement("div"); bd.className = "urw-remind"; remindEl = bd;
+      bd.style.cssText = "position:fixed;inset:0;z-index:2147481000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;";
+      var box = document.createElement("div"); box.setAttribute("role", "dialog"); box.setAttribute("aria-label", "Reworks for you");
+      box.style.cssText = "background:#5a1a26;color:#fff;border:2px solid #8c2a3a;border-radius:12px;max-width:520px;width:100%;max-height:80vh;overflow:auto;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.5);"; // (2026-10-06) Andrew: "make this more maroon"
+      var h = document.createElement("h2"); h.style.cssText = "margin:0 0 4px;font-size:18px;"; h.textContent = "Reworks for you"; box.appendChild(h);
+      var p = document.createElement("p"); p.style.cssText = "margin:0 0 10px;opacity:.9;font-size:14px;";
+      p.textContent = mine.length + (mine.length === 1 ? " open rework is" : " open reworks are") + " flagged to you or your department, " + user + ".";
+      box.appendChild(p);
+      mine.slice(0, 10).forEach(function(r){
+        var f = fold(r.entry, eventsOf(r) || []);
+        var b = document.createElement("button"); b.type = "button"; b.className = "urw-remind-row";
+        b.style.cssText = "display:block;width:100%;text-align:left;font:inherit;padding:8px 10px;margin:0 0 6px;border-radius:8px;border:1px solid #a03a4c;background:rgba(0,0,0,.22);color:inherit;cursor:pointer;";
+        var to = f.drafter ? "you" : (FLAG_GROUPS[f.flagGroup] || "");
+        b.innerHTML = "<b>" + escapeHtml(r.code || "") + "</b>" + (r.entry.cabinetNumber ? " · Cab " + escapeHtml(r.entry.cabinetNumber) : "") + " <span style=\"opacity:.7\">" + escapeHtml([r.project, r.level, r.room].filter(Boolean).join(" · ")) + "</span><br><span style=\"font-size:13px;opacity:.85\">" + escapeHtml(String(r.entry.text || "").slice(0, 90)) + "</span> <span style=\"font-size:12px;opacity:.7\">→ " + escapeHtml(to) + "</span>";
+        b.addEventListener("click", function(){ closeRemind(); openRegister(r.project || ""); openDetail(r, "register"); });
+        box.appendChild(b);
+      });
+      if (mine.length > 10){ var more = document.createElement("p"); more.style.cssText = "margin:0 0 8px;opacity:.7;font-size:13px;"; more.textContent = "…and " + (mine.length - 10) + " more."; box.appendChild(more); }
+      var row = document.createElement("div"); row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;margin-top:10px;flex-wrap:wrap;";
+      var all = document.createElement("button"); all.type = "button"; all.textContent = "Open all reworks";
+      var close = document.createElement("button"); close.type = "button"; close.textContent = "Close";
+      [all, close].forEach(function(x){ x.style.cssText = "font:inherit;min-height:42px;padding:6px 16px;border-radius:8px;border:1px solid #c04a5e;background:#7a2335;color:#fff;cursor:pointer;"; });
+      all.addEventListener("click", function(){ closeRemind(); openRegister(""); });
+      close.addEventListener("click", closeRemind);
+      row.appendChild(all); row.appendChild(close); box.appendChild(row);
+      bd.appendChild(box); bd.addEventListener("click", function(e){ if (e.target === bd) closeRemind(); });
+      document.body.appendChild(bd);
+    }
+    function remindMe(){
+      var user = cfg.getUser && cfg.getUser();
+      if (!user) return Promise.resolve(false);
+      var deptsP = (window.UtzUsers && window.UtzUsers.departmentsOf) ? window.UtzUsers.departmentsOf(user) : Promise.resolve([]);
+      return Promise.all([deptsP, ensureLoaded(120000)]).then(function(r){
+        var mine = myReworks(user, r[0] || []);
+        if (!mine.length) return false;
+        showRemind(mine, user);
+        return true;
+      }).catch(function(err){ console.warn("Rework reminder skipped:", err); return false; });
+    }
+    window.addEventListener("utzline-signed-in", function(){ setTimeout(remindMe, 600); });
+
     return {
+      remindMe: remindMe,
       openRegister: openRegister, refresh: function(){ return loadAll(); }, ensureLoaded: ensureLoaded,
       openDetail: openDetail, closeDetail: closeDetail, closeOverlay: closeZoom,
       renderItemCard: renderItemCard, renderStrip: renderStrip,
@@ -10276,7 +10934,7 @@ window.__pdfImportLibFailed = false;
   // added field (typeLabel, v4) drops that field forever the first time
   // anything marks the order received. This is the one and only write this
   // app makes into Sub Orders' data.
-  function setSubOrderReceived(projectHandle, levelName, roomName, joineryCode, orderId, received, receivedDate){
+  function setSubOrderReceived(projectHandle, levelName, roomName, joineryCode, orderId, received, receivedDate, receivedBy){
     // (v20 review fix, 2026-09-27) STRICT read-modify-write. The first cut
     // read through readSubOrdersOrderArray, which folds "file unreadable"
     // (mid-Dropbox-sync, truncated) and "order gone" into a silent null --
@@ -10317,7 +10975,8 @@ window.__pdfImportLibFailed = false;
         if (!o || o.id !== orderId) return o;
         updated = Object.assign({}, o, {
           received: !!received,
-          receivedDate: received ? (receivedDate || o.receivedDate || todayISO()) : null
+          receivedDate: received ? (receivedDate || o.receivedDate || todayISO()) : null,
+          receivedBy: received ? (receivedBy || o.receivedBy || "") : "" // (2026-10-06) who ticked it (name + PIN)
         });
         return updated;
       });
@@ -10516,7 +11175,7 @@ window.__pdfImportLibFailed = false;
 
   /* ============================== screen switching ============================== */
   var screens = {};
-  ["Setup","Reconnect","Projects","Levels","LevelPlan","Rooms","Items","Checklist","Rework","Reworks"].forEach(function(n){
+  ["Setup","Reconnect","Projects","Levels","LevelPlan","Rooms","Items","Checklist","Rework","Reworks","PreDelivery"].forEach(function(n){
     screens[n] = document.getElementById("screen" + n);
   });
   /* ---- Phone back button (2026-09-25, ported from Install ITP v35) ----
@@ -10531,6 +11190,14 @@ window.__pdfImportLibFailed = false;
      nothing pushed to pop, so back leaves the app as it always did. */
   var currentScreenName = null;
   var navPopInProgress = false;
+  // (2026-10-06) Andrew: "on all itps, back button to go back, not to start" -- the Rework screen's back goes to the screen it was opened from
+  // (the Outstanding reworks list or the floor plan), not always to the room's items
+  var reworkBackTo = "";
+  function leaveRework(){
+    if (reworkBackTo === "Reworks") return openReworksPage();
+    if (reworkBackTo === "LevelPlan"){ showScreen("LevelPlan"); return Promise.resolve(); }
+    return populateItemList().then(function(){ showScreen("Items"); });
+  }
   function showScreen(name){
     // Leaving the Level Plan by any route stops its background status
     // loading from starting any more file reads (see "Level Plan
@@ -10554,6 +11221,7 @@ window.__pdfImportLibFailed = false;
     // the final full-screen layout, not the boxed-in one.
     document.body.classList.toggle("plan-fullscreen", name === "LevelPlan");
     window.scrollTo(0, 0);
+    if (name === "Projects" && window.__pdMaybeAsk) setTimeout(window.__pdMaybeAsk, 300);
   }
   // Turns the browser's back into this app's back (see showScreen's own
   // comment). Re-pushes an entry when the back is "consumed" by closing a
@@ -10565,7 +11233,7 @@ window.__pdfImportLibFailed = false;
     if (lb && !lb.hidden){ lb.hidden = true; return true; }
     var pairs = [
       ["cameraBackdrop", "cameraCancelBtn"], ["photoSourceBackdrop", "photoSourceCancelBtn"],
-      ["markerMenuBackdrop", "markerMenuCancelBtn"], ["jobNoteViewBackdrop", "jobNoteViewCancel"],
+      ["pdWhereBackdrop", "pdOnsiteBtn"], ["markerMenuBackdrop", "markerMenuCancelBtn"], ["jobNoteViewBackdrop", "jobNoteViewCancel"],
       ["leaveConfirmBackdrop", "leaveConfirmCancel"], ["confirmBackdrop", "confirmCancel"], ["reworkAskBackdrop", "reworkAskNo"],
       ["promptBackdrop", "promptCancel"],
       ["numberpadBackdrop", "numberpadCancel"], ["identityAppChecksBackdrop", "identityAppChecksCancel"]
@@ -10607,8 +11275,9 @@ window.__pdfImportLibFailed = false;
       case "Rooms": return populateLevelList().then(function(){ showScreen("Levels"); });
       case "Levels": return populateProjectList().then(function(){ showScreen("Projects"); });
       // Rework tracker (2026-09-25, v14, ported from Install ITP).
-      case "Rework": return populateItemList().then(function(){ showScreen("Items"); });
+      case "Rework": invalidateReworkSummary(); return leaveRework();
       case "Reworks": return populateLevelList().then(function(){ showScreen("Levels"); });
+      case "PreDelivery": return populateProjectList().then(function(){ showScreen("Projects"); });
       default: return Promise.resolve();
     }
   }
@@ -10998,7 +11667,15 @@ window.__pdfImportLibFailed = false;
   var identityAppChecksSaveBtn = document.getElementById("identityAppChecksSave");
   var identityAppChecksCancelBtn = document.getElementById("identityAppChecksCancel");
   var identityAppChecksResolve = null;
+  // (2026-10-06) a new name also gets its department(s): asked straight after the apps list
+  var lastPickedDepartments = [];
   function openAppChecksModal(){
+    return openAppChecksModalApps().then(function(c){
+      if (c === null) return null;
+      return UtzUsers.pickDepartments([], "").then(function(d){ if (d === null) return null; lastPickedDepartments = d; return c; });
+    });
+  }
+  function openAppChecksModalApps(){
     identityAppChecksList.innerHTML = "";
     APP_CODES.forEach(function(pair){
       var code = pair[0], label = pair[1];
@@ -11159,12 +11836,12 @@ window.__pdfImportLibFailed = false;
                 }
                 if (UtzUsers.needsApproval(freshRows)){
                   // (2026-10-04) Andrew: "when users get added, admin gets a notification to approve"
-                  return UtzUsers.request({ name: newName, pin: pin1, showInApps: checked.join(";") }).then(function(){
+                  return UtzUsers.request({ name: newName, pin: pin1, showInApps: checked.join(";"), departments: lastPickedDepartments }).then(function(){
                     revertIdentitySelector(previousValue);
                     showToast("“" + newName + "” has been sent to an administrator to approve. You can sign in with it once it's approved.");
                   });
                 }
-                freshRows.push({ name: newName, pin: pin1, showInApps: checked.join(";") });
+                freshRows.push({ name: newName, pin: pin1, showInApps: checked.join(";") }); UtzUsers.setDepartments(newName, lastPickedDepartments).then(null, function(){});
                 return writeUsersCsv(freshRows).then(function(){
                   return setDeviceUserName(newName);
                 }).then(function(saved){
@@ -11784,6 +12461,142 @@ window.__pdfImportLibFailed = false;
     populateProjectList().then(function(){ showScreen("Projects"); });
   });
 
+
+  /* ============================ Pre-delivery check ============================
+     (2026-10-07) Andrew: "i want the delivery schedule to have a pre delivery check, where the delivery driver logs in, it asks what
+     project are you delivering, and shows you what reworks and joinery is ready to deliver" -- and, after the GPS idea: "scrap the gps
+     check, it will just be a popup button".
+     - When the app is opened (after the name is picked) a popup asks "Are you at the factory or onsite?"; At the factory opens the check,
+       Onsite is the delivery checklists as before. The Projects screen also has a "Pre-delivery check" button.
+     - The check asks which project, lists the joinery whose status is "Complete -- ready to deliver" (manufactured, not yet delivered) and
+       the reworks in the same state; the driver ticks each as it goes on the truck and Finishes. Each finish is a NEW file,
+       Project Saves\Delivery Checks\<stamp> - <name>.json (who, when, loaded, left, the note) -- never overwritten. */
+  (function(){
+    var pd = { project: "", items: [], reworks: [], ticked: {} };
+    function $(id){ return document.getElementById(id); }
+
+    function stampNow(){ return new Date().toISOString().replace(/[:T]/g, "-").replace(/\..*$/, ""); }
+    function safeName(n){ return String(n || "unknown").replace(/[\\/:*?"<>|]+/g, "").trim() || "unknown"; }
+    function checksDir(ph, create){
+      return ph.getDirectoryHandle("Project Saves", { create: !!create }).then(function(d){ return d.getDirectoryHandle("Delivery Checks", { create: !!create }); });
+    }
+    function readLastCheck(ph){
+      return checksDir(ph, false).then(function(dir){
+        var files = [], iter = dir.values();
+        function step(){ return iter.next().then(function(r){ if (r.done) return; if (r.value && r.value.kind === "file" && /\.json$/i.test(r.value.name)) files.push(r.value); return step(); }); }
+        return step().then(function(){
+          files.sort(function(a, b){ return a.name < b.name ? 1 : a.name > b.name ? -1 : 0; });
+          return files.length ? readJsonFileHandle(files[0]) : null;
+        });
+      }, function(){ return null; });
+    }
+
+    function start(){
+      if (!deviceUserName){ showToast("Pick your name first (bottom left)."); return Promise.resolve(); }
+      pd.project = ""; $("pdHeading").textContent = "Pre-delivery check"; $("pdCheck").hidden = true; $("pdPick").hidden = false;
+      showScreen("PreDelivery");
+      var list = $("pdProjectList"); list.innerHTML = "";
+      return listSubdirNames(state.rootHandle).then(function(names){
+        names = names.filter(function(n){ return !isReservedRootFolderName(n); });
+        return window.UtzArchive ? UtzArchive.filterNames(state.rootHandle, names) : names;
+      }).then(function(names){
+        if (!names.length) list.innerHTML = '<div class="empty-note">No projects found in this folder.</div>';
+        names.forEach(function(name){
+          var row = document.createElement("button"); row.type = "button"; row.className = "list-row";
+          row.innerHTML = '<div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>';
+          row.querySelector(".row-title").textContent = name;
+          row.addEventListener("click", function(){ openCheck(name); });
+          list.appendChild(row);
+          state.rootHandle.getDirectoryHandle(name).then(readProjectMeta).then(function(meta){
+            if (meta && (meta.no || meta.name || meta.contractor)){ var bits = []; if (meta.no) bits.push("No. " + meta.no); if (meta.contractor) bits.push(meta.contractor); row.querySelector(".row-sub").textContent = bits.join(" · "); }
+          }, function(){});
+        });
+      });
+    }
+
+    function openCheck(name){
+      pd.project = name; pd.ticked = {};
+      return state.rootHandle.getDirectoryHandle(name).then(function(ph){
+        state.projectName = name; state.projectHandle = ph; invalidateDirHandleCache(); invalidateReworkSummary();
+        return Promise.all([readJoineryItems(ph), readJoineryStatuses(ph), window.UtzRework ? listAllReworks() : Promise.resolve([]), readLastCheck(ph)]);
+      }).then(function(r){
+        var items = r[0] || [], sts = r[1] || [];
+        pd.items = items.filter(function(it){ var rec = it && findJoineryStatus(sts, it.level, it.room || "", it.joineryId || ""); return rec && rec.status === "manufactured"; })
+          .map(function(it){ return { kind: "joinery", level: it.level || "", room: it.room || "", code: it.joineryId || "", desc: it.description || "" }; });
+        pd.reworks = (r[2] || []).filter(function(x){ var f = window.UtzRework.fold(x.entry, x.events); return !f.isDone && f.status === "manufactured"; })
+          .map(function(x){ return { kind: "rework", level: x.level || "", room: x.room || "", code: x.code || "", desc: (x.entry.cabinetNumber ? "Cabinet " + x.entry.cabinetNumber + " · " : "") + (x.entry.text || "") }; });
+        function byWhere(a, b){ var ka = a.level + "\u0000" + a.room + "\u0000" + a.code, kb = b.level + "\u0000" + b.room + "\u0000" + b.code; return ka < kb ? -1 : ka > kb ? 1 : 0; }
+        pd.items.sort(byWhere); pd.reworks.sort(byWhere);
+        var last = r[3];
+        $("pdLast").textContent = last ? "Last check: " + (last.by || "?") + ", " + String(last.at || "").slice(0, 16).replace("T", " ") + " — " + (last.loaded || []).length + " loaded" + ((last.left || []).length ? ", " + last.left.length + " left" : "") + "." : "No pre-delivery check has been done for this project yet.";
+        $("pdHeading").textContent = "Pre-delivery check — " + name; $("pdNoteEl").value = "";
+        $("pdPick").hidden = true; $("pdCheck").hidden = false;
+        render();
+      }).catch(function(err){ console.error("Pre-delivery check failed:", err); showToast("Couldn't open that project — try again."); });
+    }
+
+    function keyOf(x){ return x.kind + "\u0000" + x.level + "\u0000" + x.room + "\u0000" + x.code + "\u0000" + x.desc; }
+    function all(){ return pd.items.concat(pd.reworks); }
+    function render(){
+      var host = $("pdList"); host.innerHTML = "";
+      function section(title, list){
+        var h = document.createElement("div"); h.className = "pd-section"; h.textContent = title + " (" + list.length + ")"; host.appendChild(h);
+        if (!list.length){ var n = document.createElement("div"); n.className = "empty-note"; n.textContent = title === "Joinery" ? "No joinery is marked ready to deliver for this project." : "No reworks are ready to deliver."; host.appendChild(n); return; }
+        var lastG = null;
+        list.forEach(function(x){
+          var g = (x.level || "No level") + " — " + (x.room || "No room");
+          if (g !== lastG){ var gt = document.createElement("div"); gt.className = "pd-group"; gt.textContent = g; host.appendChild(gt); lastG = g; }
+          var row = document.createElement("label"), k = keyOf(x); row.className = "pd-row" + (pd.ticked[k] ? " on" : ""); row.style.marginBottom = "6px";
+          row.innerHTML = '<input type="checkbox"><div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>';
+          var cb = row.querySelector("input"); cb.checked = !!pd.ticked[k];
+          row.querySelector(".row-title").textContent = x.code; row.querySelector(".row-sub").textContent = x.desc;
+          cb.addEventListener("change", function(){ pd.ticked[k] = cb.checked; row.classList.toggle("on", cb.checked); count(); });
+          host.appendChild(row);
+        });
+      }
+      section("Joinery", pd.items); section("Reworks", pd.reworks); count();
+    }
+    function count(){
+      var n = all(), on = n.filter(function(x){ return pd.ticked[keyOf(x)]; }).length;
+      $("pdCount").textContent = on + " of " + n.length + " on the truck";
+    }
+    function setAll(v){ all().forEach(function(x){ pd.ticked[keyOf(x)] = v; }); render(); }
+
+    function finish(){
+      var n = all();
+      function rec(x){ return { kind: x.kind, level: x.level, room: x.room, code: x.code, description: x.desc }; }
+      var loaded = n.filter(function(x){ return pd.ticked[keyOf(x)]; }).map(rec), left = n.filter(function(x){ return !pd.ticked[keyOf(x)]; }).map(rec);
+      var at = new Date().toISOString();
+      var data = { kind: "preDeliveryCheck", project: pd.project, by: deviceUserName, at: at, loaded: loaded, left: left, note: $("pdNoteEl").value.trim() };
+      return checksDir(state.projectHandle, true).then(function(dir){ return dir.getFileHandle(stampNow() + " - " + safeName(deviceUserName) + ".json", { create: true }); })
+        .then(function(fh){ return saveToHandle(fh, JSON.stringify(data, null, 2)); }).then(function(){
+          showToast("Pre-delivery check saved — " + loaded.length + " loaded" + (left.length ? ", " + left.length + " left behind" : "") + ".");
+          $("pdLast").textContent = "Last check: " + deviceUserName + ", " + at.slice(0, 16).replace("T", " ") + " — " + loaded.length + " loaded" + (left.length ? ", " + left.length + " left" : "") + ".";
+          return data;
+        }).catch(function(err){ console.error("Saving the pre-delivery check failed:", err); showToast("Couldn't save the check — try again."); });
+    }
+
+    // start-up question, once each time the app is opened, after sign-in: factory or onsite
+    var asked = false;
+    function maybeAsk(){
+      if (asked || !deviceUserName || currentScreenName !== "Projects" || !state.rootHandle) return;
+      var signIn = document.getElementById("utzSignIn"); if (signIn && signIn.offsetParent !== null) return; // still choosing a name
+      asked = true;
+      $("pdWhereBackdrop").hidden = false;
+    }
+    window.__pdMaybeAsk = maybeAsk;
+    window.addEventListener("utzline-signed-in", function(){ setTimeout(maybeAsk, 300); });
+    $("pdFactoryBtn").addEventListener("click", function(){ $("pdWhereBackdrop").hidden = true; start(); });
+    $("pdOnsiteBtn").addEventListener("click", function(){ $("pdWhereBackdrop").hidden = true; });
+    $("pdStartBtn").addEventListener("click", start);
+    $("pdBackBtn").addEventListener("click", function(){ populateProjectList().then(function(){ showScreen("Projects"); }); });
+    $("pdAllBtn").addEventListener("click", function(){ setAll(true); });
+    $("pdNoneBtn").addEventListener("click", function(){ setAll(false); });
+    $("pdFinishBtn").addEventListener("click", finish);
+    window.__testHooks = window.__testHooks || {};
+    window.__testHooks.preDeliveryForTest = function(){ return { project: pd.project, items: pd.items, reworks: pd.reworks }; };
+  })();
+
   /* ============================== level list ============================== */
   var levelListEl = document.getElementById("levelListEl");
   function populateLevelList(){
@@ -11791,6 +12604,7 @@ window.__pdfImportLibFailed = false;
     // folders -- listFlatLevelNames() reads real Level names out of those
     // files rather than listing this project's own subdirectories at all.
     var namesPromise = listFlatLevelNames(state.projectHandle);
+    loadReworkSummary().then(paintReworksPageBtn); // the Outstanding reworks button carries the count
     return namesPromise.then(function(names){
       levelListEl.innerHTML = "";
       if (!names.length){
@@ -12542,8 +13356,9 @@ window.__pdfImportLibFailed = false;
     jobStatusBadge.style.display = "none";
     g.appendChild(jobStatusBadge);
 
-    var labelX = (obj.label && typeof obj.label.x === "number") ? obj.label.x : obj.x;
-    var labelY = (obj.label && typeof obj.label.y === "number") ? obj.label.y : (obj.y + fullR + 22);
+    var labelPt = UtzPlanMarker.labelPos(obj); // (2026-10-06) the Projects look: the code sits where Projects puts it
+var labelX = labelPt.x;
+    var labelY = labelPt.y;
     var labelText = roomlinkDisplayText(obj);
     // (2026-10-04) Andrew: "every app should render text the same, this includes the item labels from projects" -- the shared
     // drawer (shared/plan-marker) every other app uses: the label's own saved colour, the white / black halo, weight 500, the
@@ -13649,14 +14464,20 @@ window.__pdfImportLibFailed = false;
       '<button type="button" class="mbtn row-summary">Summary</button>' +
       '<button type="button" class="mbtn row-job-note">View job note</button>' +
       '<button type="button" class="mbtn mbtn-rework row-rework">Add rework</button>' +
-      '<button type="button" class="mbtn mbtn-accent row-open">Open ITP</button></div>';
+      '<button type="button" class="mbtn mbtn-accent row-open">Open ITP</button>' +
+      '<button type="button" class="mbtn mbtn-rework-solid row-open-rework" hidden>Open rework</button></div>';
   }
   /* ---- (Install ITP v58 / Delivery ITP v37, 2026-10-02) rework on the item bar and the room bar ----
      Andrew: "install itp needs add / open rework on the joinery item bar. and a flag in the room bar that there are
      outstanding reworks in that room." One cheap read per project (the slim rework entries + each rework file's log,
      the same data the Outstanding reworks page folds -- no photos), kept for a minute and re-read when the Rework
      screen is left. byItem[level|room|code] = { total, open }, byRoom[level|room|] = open count. */
-  var reworkSummary = { project: "", at: 0, p: null, byItem: {}, byRoom: {} };
+  var reworkSummary = { project: "", at: 0, p: null, byItem: {}, byRoom: {}, forThisItp: 0 };
+  // (2026-10-06) Andrew: "outstanding reworks in itp to show how many relevant to that itp for that project" -- the open reworks flagged to this ITP's group
+  function paintReworksPageBtn(){
+    var b = document.getElementById("openReworksPageBtn"); if (!b) return;
+    b.textContent = "🛠 Outstanding reworks" + (reworkSummary.project === (state.projectName || "") && reworkSummary.forThisItp ? " (" + reworkSummary.forThisItp + ")" : "");
+  }
   function rwKey(level, room, code){ return [level, room, code].map(function(x){ return String(x || "").toLowerCase(); }).join("\u0000"); }
   function invalidateReworkSummary(){ reworkSummary.p = null; reworkSummary.at = 0; }
   function loadReworkSummary(force){
@@ -13673,14 +14494,15 @@ window.__pdfImportLibFailed = false;
         return window.UtzRework.readLog(handle, rows[0]).then(function(evs){ rows.forEach(function(r){ r.events = evs; }); }, function(){});
       })).then(function(){ return res.rows; });
     }).then(function(rows){
-      var byItem = {}, byRoom = {};
+      var byItem = {}, byRoom = {}, forThisItp = 0;
       rows.forEach(function(r){
         var f = window.UtzRework.fold(r.entry, r.events || []);
         var ik = rwKey(r.level, r.room, r.code), it = byItem[ik] || (byItem[ik] = { total: 0, open: 0 });
         it.total++;
+        if (!f.isDone && f.flagGroup === "delivery") forThisItp++;
         if (!f.isDone){ it.open++; var rk = rwKey(r.level, r.room, ""); byRoom[rk] = (byRoom[rk] || 0) + 1; }
       });
-      reworkSummary.byItem = byItem; reworkSummary.byRoom = byRoom;
+      reworkSummary.byItem = byItem; reworkSummary.byRoom = byRoom; reworkSummary.forThisItp = forThisItp; paintReworksPageBtn();
       return reworkSummary;
     }).catch(function(err){ console.error("Reading the rework summary failed:", err); reworkSummary.p = null; return reworkSummary; });
     reworkSummary.p = p;
@@ -13689,9 +14511,12 @@ window.__pdfImportLibFailed = false;
   // "Add rework" with none logged for the item, "Open rework (n)" with n outstanding, "Open rework" when all are delivered
   function paintReworkBtn(btn, level, room, code, sum){
     var it = sum.byItem[rwKey(level, room, code)], total = it ? it.total : 0, open = it ? it.open : 0;
-    btn.textContent = !total ? "Add rework" : (open ? "Open rework (" + open + ")" : "Open rework");
+    btn.textContent = "Add rework"; // (2026-10-06) always adds; the existing ones have their own button
     btn.setAttribute("data-rework-open", String(open));
+    var ob = btn.parentNode && btn.parentNode.querySelector(".row-open-rework");
+    if (ob){ ob.hidden = !total; ob.textContent = open ? "Open rework (" + open + ")" : "Open rework"; }
   }
+
   // the Rooms list: each room fills with blue as far as its joinery items are done (mean of the items' progress)
   function paintRoomProgress(){
     if (!state.projectHandle) return Promise.resolve();
@@ -13751,12 +14576,14 @@ window.__pdfImportLibFailed = false;
       if (!state.projectHandle || !window.UtzItemSummary) return;
       var lvl = state.levelName;
       window.UtzItemSummary.open({ projectHandle: state.projectHandle, projectName: state.projectName || "", level: lvl, room: roomName, code: joineryCode,
-        toast: typeof showToast === "function" ? showToast : null, onReworks: function(){ openRework(joineryCode); } });
+        toast: typeof showToast === "function" ? showToast : null, onReworks: function(){ openRework(joineryCode, "list"); } });
     });
     var rwBtn = row.querySelector(".row-rework");
     if (rwBtn){
       var lvl = state.levelName;
-      rwBtn.addEventListener("click", function(e){ e.stopPropagation(); openRework(joineryCode); });
+      rwBtn.addEventListener("click", function(e){ e.stopPropagation(); openRework(joineryCode, "add"); });
+      var orBtn = row.querySelector(".row-open-rework");
+      if (orBtn) orBtn.addEventListener("click", function(e){ e.stopPropagation(); openRework(joineryCode, "list"); });
       paintReworkBtn(rwBtn, lvl, roomName, joineryCode, reworkSummary.project === (state.projectName || "") ? reworkSummary : { byItem: {} });
       loadReworkSummary().then(function(sum){ if (rwBtn.isConnected !== false) paintReworkBtn(rwBtn, lvl, roomName, joineryCode, sum); });
     }
@@ -14190,6 +15017,7 @@ window.__pdfImportLibFailed = false;
   }
   window.__testHooks = window.__testHooks || {};
   window.__testHooks.setDeviceUserNameDirectForTest = function(n){ deviceUserName = n || ""; };
+  window.__testHooks.setJoineryStatusForTest = function(level, room, code, status){ return setJoineryStatusForward(state.projectHandle, level, room, code, status, "Tester"); };
   window.__testHooks.reworkEventsForTest = function(){ return (reworkState.events || []).map(function(e){ return { kind: e.kind, status: e.status, text: e.text, by: e.by, file: e._file }; }); };
   function openReworkPdfBlob(res){
     var url = URL.createObjectURL(res.blob);
@@ -14227,7 +15055,8 @@ window.__pdfImportLibFailed = false;
       showToast("Couldn't save that rework change — try again.");
     });
   }
-  function openRework(joineryCode){
+  // mode "list": only the item's existing reworks (the add form is hidden); anything else: add + list
+  function openRework(joineryCode, mode){
     state.currentJoineryNo = joineryCode;
     updateCrumbs();
     return ensureReworkFolder(joineryCode).then(function(handles){
@@ -14260,12 +15089,14 @@ window.__pdfImportLibFailed = false;
       document.getElementById("reworkHeading").textContent = "Rework — " + joineryCode;
       resetReworkForm();
       renderReworkList();
+      document.getElementById("reworkAddHeading").hidden = mode === "list"; document.getElementById("reworkAddForm").hidden = mode === "list";
+      reworkBackTo = (currentScreenName === "Reworks" || currentScreenName === "LevelPlan") ? currentScreenName : ""; // (2026-10-06) back returns to where it was opened from
       showScreen("Rework");
     });
   }
   document.getElementById("backFromReworkBtn").addEventListener("click", function(){
     invalidateReworkSummary(); // (v37) a rework may have been added / delivered / closed: the item bars and room flags re-read
-    populateItemList().then(function(){ showScreen("Items"); });
+    leaveRework();
   });
 
   /* ---- Outstanding reworks page ----
@@ -15472,7 +16303,35 @@ window.__pdfImportLibFailed = false;
     }catch(e){ return iso; }
   }
   function subOrderStatusText(o){
-    return o.received ? ("Received" + (o.receivedDate ? " " + formatSubOrderDateOnly(o.receivedDate) : "")) : "Not yet received";
+    return o.received ? ("Delivered" + (o.receivedDate ? " " + formatSubOrderDateOnly(o.receivedDate) : "") + (o.receivedBy ? " — " + o.receivedBy : "")) : "Not yet delivered";
+  }
+  // (2026-10-06) a name picked from the list, then that person's own PIN on the numberpad. Resolves the name, or null when cancelled.
+  function escH(t){ return String(t == null ? "" : t).replace(/[&<>"]/g, function(c){ return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function askNamePin(why){
+    return readUsersCsv().then(function(rows){ return window.UtzUsers ? UtzUsers.filterNames(rows) : rows.map(function(r){ return r.name; }); }, function(){ return []; }).then(function(names){
+      if (!names.length){ showToast("No names in the list yet — add yours in UTZLINE Projects first."); return null; }
+      return new Promise(function(resolve){
+        var bd = document.createElement("div"); bd.className = "modal-backdrop";
+        var box = document.createElement("div"); box.className = "modal-box"; box.setAttribute("role", "dialog");
+        box.innerHTML = "<h2 style=\"margin-top:0\">" + escH(why || "Who are you?") + "</h2><p class=\"hint\">Pick your name, then enter your PIN.</p>";
+        var sel = document.createElement("select"); sel.style.cssText = "width:100%;font:inherit;min-height:44px;padding:6px 10px;border-radius:8px;";
+        var cur = deviceUserName || "";
+        sel.innerHTML = "<option value=\"\">— your name —</option>" + names.map(function(n){ return "<option" + (n === cur ? " selected" : "") + ">" + escH(n) + "</option>"; }).join("");
+        box.appendChild(sel);
+        var acts = document.createElement("div"); acts.className = "modal-actions"; acts.style.marginTop = "14px";
+        var cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "mbtn"; cancel.textContent = "Cancel";
+        var ok = document.createElement("button"); ok.type = "button"; ok.className = "mbtn mbtn-accent"; ok.textContent = "Enter PIN";
+        acts.appendChild(cancel); acts.appendChild(ok); box.appendChild(acts); bd.appendChild(box); document.body.appendChild(bd);
+        function done(v){ if (bd.parentNode) bd.parentNode.removeChild(bd); resolve(v); }
+        cancel.addEventListener("click", function(){ done(null); });
+        ok.addEventListener("click", function(){
+          var name = sel.value; if (!name){ showToast("Pick your name first."); return; }
+          openNumberpad({ title: "Enter PIN", subtitle: "for “" + name + "”", verify: function(pin){
+            return readUsersCsv().then(function(r){ var row = findUserRowCI(r, name); return !!(row && window.UtzPin.eq(row.pin, pin)); });
+          } }).then(function(pin){ if (pin === null) return; done(name); }, function(){ showToast("Couldn't read utzline-users.csv."); });
+        });
+      });
+    });
   }
   function buildSubOrderRow(o, t, levelName, roomName, joineryCode, isBaseSubordType, subordLabelFor){
     var row = document.createElement("div");
@@ -15529,20 +16388,21 @@ window.__pdfImportLibFailed = false;
     recCheck.checked = !!o.received;
     recCheck.disabled = checklistLocked;
     recLabel.appendChild(recCheck);
-    recLabel.appendChild(document.createTextNode(" Received"));
+    recLabel.appendChild(document.createTextNode(" Has this been delivered?")); // (2026-10-06) Andrew: "has this been delivered" for every order on the item
     var recDate = document.createElement("input");
     recDate.type = "date";
     recDate.value = o.receivedDate || "";
     recDate.hidden = !o.received;
-    recDate.disabled = checklistLocked;
+    recDate.disabled = checklistLocked || !!o.received; // locked once delivered
     recLabel.appendChild(recDate);
     row.appendChild(recLabel);
 
-    function persistReceived(checked, dateVal){
-      return setSubOrderReceived(state.projectHandle, levelName, roomName, joineryCode, o.id, checked, dateVal).then(function(updated){
+    function persistReceived(checked, dateVal, by){
+      return setSubOrderReceived(state.projectHandle, levelName, roomName, joineryCode, o.id, checked, dateVal, by).then(function(updated){
         if (!updated) return; // order vanished from the file meanwhile (unattached elsewhere) -- nothing more to reconcile here
         o.received = updated.received;
         o.receivedDate = updated.receivedDate;
+        o.receivedBy = updated.receivedBy;
         recDate.value = updated.receivedDate || "";
         status.className = "subord-order-item-status" + (o.received ? " received" : "");
         status.textContent = subOrderStatusText(o);
@@ -15552,8 +16412,14 @@ window.__pdfImportLibFailed = false;
       var checked = recCheck.checked;
       recDate.hidden = !checked;
       if (checked && !recDate.value) recDate.value = todayISO();
-      persistReceived(checked, recDate.value).then(function(){
-        showToast(checked ? "Marked as received." : "Marked as not received.");
+      // (2026-10-06) Andrew: "when received ask for username / PIN ... and also required to unreceive (locked after receive)" -- ticking AND
+      // unticking ask who is confirming, with their PIN; a delivered order's date is locked until it is un-delivered
+      askNamePin(checked ? "Confirm the delivery" : "Undo the delivery").then(function(by){
+        if (by === null){ recCheck.checked = !checked; recDate.hidden = !recCheck.checked; return null; }
+        return persistReceived(checked, recDate.value, by).then(function(){
+          recDate.disabled = checklistLocked || checked;
+          showToast(checked ? "Marked as delivered." : "Marked as not delivered.");
+        });
       }).catch(function(err){
         console.error("Updating sub order received status failed:", err);
         showToast((err && err.userMessage) || "Couldn't update received status — try again.");
@@ -15564,7 +16430,7 @@ window.__pdfImportLibFailed = false;
     recDate.addEventListener("change", function(){
       if (!recCheck.checked) return;
       var dateVal = recDate.value || todayISO();
-      persistReceived(true, dateVal).catch(function(err){
+      persistReceived(true, dateVal, o.receivedBy || "").catch(function(err){
         console.error("Updating sub order received date failed:", err);
         showToast((err && err.userMessage) || "Couldn't update the received date — try again.");
       });
